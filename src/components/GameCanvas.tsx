@@ -81,6 +81,11 @@ export default function GameCanvas({
   // Save gating lock to avoid duplicate reward uploads
   const hasSavedCurrentRun = useRef<boolean>(false);
 
+  // Performance and FPS Monitoring States
+  const lastFrameTimeRef = useRef<number>(performance.now());
+  const frameTimesRef = useRef<number[]>([]);
+  const [perfStats, setPerfStats] = useState({ fps: 60, frameTime: 16.6, memory: 0 });
+
   // Physics engine reference variables
   const engineState = useRef({
     playerY: 240,
@@ -276,6 +281,8 @@ export default function GameCanvas({
 
     setScore(0);
     setCoinsCollectedCount(0);
+    hasSavedCurrentRun.current = false;
+    setReviveCount(0);
   };
 
   // Spark generators for score checkpoint passes
@@ -324,8 +331,6 @@ export default function GameCanvas({
 
   // Physics updating + Collision logic (60fps animation context)
   const updateGamePhy = () => {
-    hasSavedCurrentRun.current = false;
-    setReviveCount(0);
     const state = engineState.current;
 
     if (state.invulnerableFrames > 0) {
@@ -641,7 +646,40 @@ export default function GameCanvas({
     let animId: number;
 
     const renderLoop = () => {
+      const startT = performance.now();
+      const delta = startT - lastFrameTimeRef.current;
+      lastFrameTimeRef.current = startT;
+
+      // Log frame time warning thresholds requested by user
+      if (delta > 33) {
+        console.warn(`[Drive Speedway Perf Warning] CRITICAL slow frame triggered: ${delta.toFixed(2)}ms`);
+      } else if (delta > 16) {
+        console.warn(`[Drive Speedway Perf Warning] Slow frame detected: ${delta.toFixed(2)}ms`);
+      }
+
+      frameTimesRef.current.push(delta);
+      if (frameTimesRef.current.length > 30) {
+        frameTimesRef.current.shift();
+      }
+
       updateGamePhy();
+
+      // De-bounce state updates to only once per 30 render ticks to avoid React render queue overhead
+      if (engineState.current.currentFrame % 30 === 0 && frameTimesRef.current.length > 0) {
+        const avgDelta = frameTimesRef.current.reduce((a, b) => a + b, 0) / frameTimesRef.current.length;
+        const calculatedFps = Math.max(1, Math.min(60, Math.round(1000 / avgDelta)));
+        
+        let currentMemory = 0;
+        if (typeof window !== "undefined" && (window.performance as any).memory) {
+          currentMemory = Math.round((window.performance as any).memory.usedJSHeapSize / (1024 * 1024));
+        }
+
+        setPerfStats({
+          fps: calculatedFps,
+          frameTime: parseFloat(avgDelta.toFixed(1)),
+          memory: currentMemory
+        });
+      }
 
       ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
@@ -1117,10 +1155,26 @@ export default function GameCanvas({
 
       {/* Screen HUD Indicators Overlay */}
       <div className="absolute top-4 inset-x-4 flex justify-between items-center pointer-events-none z-10 select-none">
-        {/* Left indicators: GATES passed */}
-        <div className="flex items-center gap-2 px-3.5 py-1.5 bg-neutral-900/80 backdrop-blur-md rounded-2xl border border-neutral-800 text-xs font-mono font-bold text-white shadow-lg">
-          <Sparkles className="w-4 h-4 text-pink-500 animate-spin" style={{ animationDuration: "3s" }} />
-          <span>GATES: {score}</span>
+        {/* Left indicators: GATES passed and Performance HUD */}
+        <div className="flex flex-col gap-1.5 pointer-events-none">
+          <div className="flex items-center gap-2 px-3.5 py-1.5 bg-neutral-900/80 backdrop-blur-md rounded-2xl border border-neutral-800 text-xs font-mono font-bold text-white shadow-lg">
+            <Sparkles className="w-4 h-4 text-pink-500 animate-spin" style={{ animationDuration: "3s" }} />
+            <span>GATES: {score}</span>
+          </div>
+
+          <div className="flex items-center gap-2 px-2.5 py-1 bg-black/75 backdrop-blur-md rounded-xl border border-neutral-800/60 font-mono text-[8px] text-neutral-400 font-extrabold shadow-sm">
+            <span className={perfStats.fps < 45 ? "text-red-500 animate-pulse" : perfStats.fps < 55 ? "text-yellow-500" : "text-green-400"}>
+              ● {perfStats.fps} FPS
+            </span>
+            <span className="text-neutral-600">|</span>
+            <span>{perfStats.frameTime} MS</span>
+            {perfStats.memory > 0 && (
+              <>
+                <span className="text-neutral-600">|</span>
+                <span>{perfStats.memory} MB RAM</span>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Right controls: pause / mute buttons */}

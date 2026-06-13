@@ -84,6 +84,8 @@ class RetroAudioEngine {
    */
   private ensureContext() {
     if (typeof window === "undefined") return;
+    if (this.ctx && this.ctx.state === "running") return;
+
     if (!this.ctx) {
       try {
         const AudioCtxClass = (window as any).AudioContext || (window as any).webkitAudioContext;
