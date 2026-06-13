@@ -12,7 +12,7 @@ import { retroAudio } from "./audio";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Sparkles, Gamepad2, Coins, Trophy, Calendar, Award, User, LogOut, 
-  Settings, Volume2, VolumeX, Share2, Globe, Heart, ShieldCheck, Play
+  Settings, Volume2, VolumeX, Share2, Globe, Heart, ShieldCheck, Play, Lock
 } from "lucide-react";
 import { 
   RewardsCalendarWidget, StandingsWidget, MissionCenterWidget, 

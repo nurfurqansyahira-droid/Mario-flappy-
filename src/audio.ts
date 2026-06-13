@@ -83,29 +83,53 @@ class RetroAudioEngine {
    * Safe AudioContext initialization
    */
   private ensureContext() {
+    if (typeof window === "undefined") return;
     if (!this.ctx) {
-      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtxClass) return;
-      
-      this.ctx = new AudioCtxClass();
-      
-      // Setup node graph
-      this.masterGain = this.ctx.createGain();
-      this.bgmGain = this.ctx.createGain();
-      this.sfxGain = this.ctx.createGain();
-      
-      this.masterGain.gain.setValueAtTime(this.isMuted ? 0 : 0.4, this.ctx.currentTime);
-      this.bgmGain.gain.setValueAtTime(0.35, this.ctx.currentTime); // keep music slightly quieter
-      this.sfxGain.gain.setValueAtTime(0.65, this.ctx.currentTime);
-      
-      this.bgmGain.connect(this.masterGain);
-      this.sfxGain.connect(this.masterGain);
-      this.masterGain.connect(this.ctx.destination);
+      try {
+        const AudioCtxClass = (window as any).AudioContext || (window as any).webkitAudioContext;
+        if (!AudioCtxClass || typeof AudioCtxClass !== "function") return;
+        
+        try {
+          if (AudioCtxClass.prototype) {
+            this.ctx = new AudioCtxClass();
+          } else {
+            this.ctx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
+          }
+        } catch (innerErr) {
+          console.warn("Native AudioContext instantiation failed:", innerErr);
+          this.ctx = null;
+        }
+        
+        if (this.ctx) {
+          // Setup node graph
+          this.masterGain = this.ctx.createGain();
+          this.bgmGain = this.ctx.createGain();
+          this.sfxGain = this.ctx.createGain();
+          
+          this.masterGain.gain.setValueAtTime(this.isMuted ? 0 : 0.4, this.ctx.currentTime);
+          this.bgmGain.gain.setValueAtTime(0.35, this.ctx.currentTime); // keep music slightly quieter
+          this.sfxGain.gain.setValueAtTime(0.65, this.ctx.currentTime);
+          
+          this.bgmGain.connect(this.masterGain);
+          this.sfxGain.connect(this.masterGain);
+          this.masterGain.connect(this.ctx.destination);
+        }
+      } catch (e) {
+        console.warn("Failed to initialize Web Audio context (possibly blocked or mock sandbox):", e);
+        this.ctx = null;
+        this.masterGain = null;
+        this.bgmGain = null;
+        this.sfxGain = null;
+      }
     }
     
     // Resume context if suspended
     if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      try {
+        this.ctx.resume();
+      } catch (e) {
+        console.warn("Failed to resume audio context:", e);
+      }
     }
   }
 
@@ -549,7 +573,6 @@ class RetroAudioEngine {
    */
   public setMute(muted: boolean) {
     this.isMuted = muted;
-    this.ensureContext();
     if (this.masterGain && this.ctx) {
       this.masterGain.gain.setValueAtTime(muted ? 0.0 : 0.4, this.ctx.currentTime);
     }
