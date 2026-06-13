@@ -579,7 +579,12 @@ export default function GameCanvas() {
 
   const handleGameOver = () => {
     setGameStatus("GAMEOVER");
-    retroAudio.playGameOver();
+    retroAudio.playMammaMia();
+    // Delay the classic game over tone slightly to let the high-pitched "Mamma Mia!" cry ring out clearly first
+    const timer = setTimeout(() => {
+      retroAudio.playGameOver();
+    }, 280);
+    return () => clearTimeout(timer);
   };
 
   // Drawing routines inside canvas context

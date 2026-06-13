@@ -286,6 +286,107 @@ class RetroAudioEngine {
   }
 
   /**
+   * Synthesizes an energetic, funny 8-bit chip vocalization that sounds just like "Mamma Mia!"
+   */
+  public playMammaMia() {
+    try {
+      this.ensureContext();
+      if (!this.ctx || this.isMuted) return;
+
+      const now = this.ctx.currentTime;
+      this.stopBgm(); // Always shut down background music immediately on defeat
+
+      // Let's create an oscillator for the vocal formant approximation
+      const osc = this.ctx.createOscillator();
+      const gainNode = this.ctx.createGain();
+      
+      // Use "sawtooth" for a nice buzzy, speech-like retro tone
+      osc.type = "sawtooth"; 
+
+      // Frequencies for the syllables: "Mam-ma Mi-a!"
+      // G5 (784 Hz), A5 (880 Hz), C6 (1047 Hz), E5 (659 Hz)
+      const t1 = now + 0.0;
+      const t2 = now + 0.09;
+      const t3 = now + 0.18;
+      const t4 = now + 0.32;
+      const tEnd = now + 0.55;
+
+      // Pitch automation to mimic speech cadence
+      osc.frequency.setValueAtTime(783.99, t1); // "Mam"
+      osc.frequency.setValueAtTime(880.00, t2); // "ma"
+      osc.frequency.setValueAtTime(1046.50, t3); // "Mi"
+      osc.frequency.setValueAtTime(783.99, t4); // "a"
+      osc.frequency.exponentialRampToValueAtTime(523.25, tEnd); // slide down (exclamation!)
+
+      // Tone volume envelope to give distinct syllable boundaries (muttering effect)
+      gainNode.gain.setValueAtTime(0, now);
+      // "Mam"
+      gainNode.gain.linearRampToValueAtTime(0.4, t1 + 0.02);
+      gainNode.gain.setValueAtTime(0.4, t2 - 0.015);
+      gainNode.gain.linearRampToValueAtTime(0.01, t2 - 0.005);
+      
+      // "ma"
+      gainNode.gain.linearRampToValueAtTime(0.4, t2 + 0.02);
+      gainNode.gain.setValueAtTime(0.4, t3 - 0.015);
+      gainNode.gain.linearRampToValueAtTime(0.01, t3 - 0.005);
+      
+      // "Mi" (louder emphasis!)
+      gainNode.gain.linearRampToValueAtTime(0.55, t3 + 0.02);
+      gainNode.gain.setValueAtTime(0.55, t4 - 0.015);
+      gainNode.gain.linearRampToValueAtTime(0.01, t4 - 0.005);
+      
+      // "a" (slide out)
+      gainNode.gain.linearRampToValueAtTime(0.45, t4 + 0.03);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, tEnd);
+
+      // Lowpass filter to emulate the distinct warm/toyish low-fidelity speaker of retro cabinets
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(1400, now);
+      filter.Q.setValueAtTime(1.5, now);
+
+      osc.connect(filter);
+      filter.connect(gainNode);
+
+      if (this.sfxGain) {
+        gainNode.connect(this.sfxGain);
+      } else {
+        gainNode.connect(this.ctx.destination);
+      }
+
+      osc.start(now);
+      osc.stop(tEnd + 0.05);
+
+      // Second harmonizing oscillator for cartoonish depth (detuned triangle wave)
+      const oscSec = this.ctx.createOscillator();
+      const gainSec = this.ctx.createGain();
+      oscSec.type = "triangle";
+      
+      oscSec.frequency.setValueAtTime(783.99 / 2, t1); // octaves lower to give body
+      oscSec.frequency.setValueAtTime(880.00 / 2, t2);
+      oscSec.frequency.setValueAtTime(1046.50 / 2, t3);
+      oscSec.frequency.setValueAtTime(783.99 / 2, t4);
+      oscSec.frequency.exponentialRampToValueAtTime(523.25 / 2, tEnd);
+
+      gainSec.gain.setValueAtTime(0, now);
+      gainSec.gain.linearRampToValueAtTime(0.2, t1 + 0.05);
+      gainSec.gain.exponentialRampToValueAtTime(0.01, tEnd);
+
+      oscSec.connect(gainSec);
+      if (this.sfxGain) {
+        gainSec.connect(this.sfxGain);
+      } else {
+        gainSec.connect(this.ctx.destination);
+      }
+      oscSec.start(now);
+      oscSec.stop(tEnd + 0.05);
+      
+    } catch (e) {
+      console.warn("Could not play Mamma Mia speech:", e);
+    }
+  }
+
+  /**
    * Plays a minor positive level-start SFX
    */
   public playStart() {
