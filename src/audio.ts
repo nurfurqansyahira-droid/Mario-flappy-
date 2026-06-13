@@ -38,6 +38,18 @@ class RetroAudioEngine {
     62, 0, 65, 62, 60, 0, 0, 0
   ];
 
+  // Upbeat Speedway Track patterns
+  private readonly melodyPatternSpeedway: number[] = [
+    72, 72, 76, 72, 79, 0, 79, 0,
+    77, 0, 77, 79, 74, 0, 76, 0,
+    72, 72, 76, 72, 79, 0, 79, 0,
+    81, 0, 83, 84, 79, 0, 0, 0,
+    77, 77, 81, 77, 76, 76, 79, 76,
+    74, 74, 77, 74, 72, 0, 67, 0,
+    69, 71, 72, 74, 76, 77, 79, 81,
+    83, 0, 84, 0, 84, 0, 0, 0
+  ];
+
   private readonly bassPattern: number[] = [
     48, 48, 55, 48, 52, 52, 55, 52,
     45, 45, 52, 45, 50, 50, 55, 50,
@@ -49,6 +61,19 @@ class RetroAudioEngine {
     41, 41, 48, 41, 43, 43, 50, 43,
     48, 48, 48, 48, 36, 48, 48, 0
   ];
+
+  private readonly bassPatternSpeedway: number[] = [
+    48, 48, 48, 48, 48, 48, 48, 48,
+    50, 50, 50, 50, 50, 50, 50, 50,
+    52, 52, 52, 52, 52, 52, 52, 52,
+    55, 55, 55, 55, 48, 48, 48, 48,
+    45, 45, 45, 45, 41, 41, 41, 41,
+    43, 43, 43, 43, 48, 48, 48, 48,
+    45, 45, 47, 47, 48, 48, 50, 50,
+    52, 0, 55, 0, 48, 0, 0, 0
+  ];
+
+  private activeMusicTrack: "CASTLE" | "SPEEDWAY" = "CASTLE";
 
   constructor() {
     // We defer actual Web Audio startup until first user interaction
@@ -168,6 +193,44 @@ class RetroAudioEngine {
   }
 
   /**
+   * Plays a crisp high metal gold coin chime sound
+   */
+  public playCoin() {
+    try {
+      this.ensureContext();
+      if (!this.ctx || this.isMuted) return;
+
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gainNode = this.ctx.createGain();
+
+      osc.type = 'sine'; // pure round metal pitch
+      
+      const dur = 0.08;
+      // High-pitched coin pickup chime (B5 rising rapidly to E6)
+      osc.frequency.setValueAtTime(987.77, now);
+      osc.frequency.setValueAtTime(1318.51, now + dur);
+
+      gainNode.gain.setValueAtTime(0.01, now);
+      gainNode.gain.linearRampToValueAtTime(0.75, now + 0.01);
+      gainNode.gain.setValueAtTime(0.75, now + dur);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, now + dur * 2);
+
+      osc.connect(gainNode);
+      if (this.sfxGain) {
+        gainNode.connect(this.sfxGain);
+      } else {
+        gainNode.connect(this.ctx.destination);
+      }
+
+      osc.start(now);
+      osc.stop(now + dur * 2.1);
+    } catch (e) {
+      console.warn("Could not play sound:", e);
+    }
+  }
+
+  /**
    * Plays a Game Over SFX: descending notes with a detuned buzzer arpeggio
    */
   public playGameOver() {
@@ -276,9 +339,26 @@ class RetroAudioEngine {
     this.sequencerTimer = setTimeout(() => this.scheduler(), 35);
   }
 
+  private getActiveMelodyPattern(): number[] {
+    return this.activeMusicTrack === "SPEEDWAY" ? this.melodyPatternSpeedway : this.melodyPattern;
+  }
+
+  private getActiveBassPattern(): number[] {
+    return this.activeMusicTrack === "SPEEDWAY" ? this.bassPatternSpeedway : this.bassPattern;
+  }
+
+  public setBgmTrack(track: "CASTLE" | "SPEEDWAY") {
+    this.activeMusicTrack = track;
+  }
+
+  public getBgmTrack(): "CASTLE" | "SPEEDWAY" {
+    return this.activeMusicTrack;
+  }
+
   private advanceStep() {
     this.nextNoteTime += this.secondsPerStep;
-    this.currentStep = (this.currentStep + 1) % this.melodyPattern.length;
+    const activeMelody = this.getActiveMelodyPattern();
+    this.currentStep = (this.currentStep + 1) % activeMelody.length;
   }
 
   /**
@@ -287,8 +367,11 @@ class RetroAudioEngine {
   private scheduleNote(stepNum: number, time: number) {
     if (!this.ctx || this.isMuted) return;
 
-    const melMidi = this.melodyPattern[stepNum];
-    const bassMidi = this.bassPattern[stepNum];
+    const activeMelody = this.getActiveMelodyPattern();
+    const activeBass = this.getActiveBassPattern();
+
+    const melMidi = activeMelody[stepNum % activeMelody.length];
+    const bassMidi = activeBass[stepNum % activeBass.length];
 
     // 1. Synthesize Melody (Square wave, bouncy 8-bit sound)
     if (melMidi > 0) {

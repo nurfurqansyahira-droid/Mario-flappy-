@@ -33,6 +33,13 @@ interface Obstacle {
   width: number;
 }
 
+interface Coin {
+  x: number;
+  y: number;
+  collected: boolean;
+  angleOffset: number;
+}
+
 interface Cloud {
   x: number;
   y: number;
@@ -52,15 +59,73 @@ interface Particle {
   gravity: number;
 }
 
-// 16x16 Pixel Art matrices for plumber
-const SPRITE_COLORS: Record<string, string> = {
-  "R": "#e52521", // Mario Cap & Shirt Red
-  "B": "#0a55dc", // Overall Blue
-  "S": "#fdb883", // Skin Peach
-  "K": "#211005", // Mustache, eyes, shoes (Dark Brown/Black)
-  "W": "#ffffff", // Whites of cap detail & gloves
-  "Y": "#f4d03f"  // Gold / buttons
-};
+// Define accessible retro characters with matching color schemes
+const CHARACTERS = [
+  {
+    id: "MARIO",
+    name: "Classic Red",
+    primary: "#E52521",
+    secondary: "#0A55DC",
+    palette: {
+      "R": "#E52521", // Cap/Shirt Red
+      "B": "#0A55DC", // Overalls Blue
+      "S": "#FDB883", // Peach skin
+      "K": "#211005", // Mustache & shoes
+      "W": "#FFFFFF", // Whites / gloves
+      "Y": "#F4D03F"  // Golden yellow buttons
+    },
+    funFact: "The legendary brick-busting plumber specialist!",
+    sparkColor: "#F1C40F"
+  },
+  {
+    id: "LUIGI",
+    name: "Forest Green",
+    primary: "#2ECC71",
+    secondary: "#2C3E50",
+    palette: {
+      "R": "#2ECC71", // Cap/Shirt Green
+      "B": "#2C3E50", // Overalls dark slate
+      "S": "#FDB883", // Peach skin
+      "K": "#111111", // Mustache & shoes
+      "W": "#FFFFFF", // Whites / gloves
+      "Y": "#F1C40F"  // Yellow buttons
+    },
+    funFact: "A high-jump expert with stylish forest apparel!",
+    sparkColor: "#2ECC71"
+  },
+  {
+    id: "WARIO",
+    name: "Cosmic Purple",
+    primary: "#8E44AD",
+    secondary: "#F1C40F",
+    palette: {
+      "R": "#8E44AD", // Cap/Shirt Purple
+      "B": "#F1C40F", // Gold yellow overalls
+      "S": "#FDB883", // Peach skin
+      "K": "#000000", // Dark mustache
+      "W": "#FFFFFF", // Whites / gloves
+      "Y": "#E74C3C"  // Red buttons
+    },
+    funFact: "A mischievous treasure hunter who loves golden gold coins!",
+    sparkColor: "#9B59B6"
+  },
+  {
+    id: "PEACH",
+    name: "Royal Pink",
+    primary: "#FC427B",
+    secondary: "#FFEAA7",
+    palette: {
+      "R": "#FC427B", // Cap/Caplet deep pink
+      "B": "#FFEAA7", // Pastel yellow/peach skirt base
+      "S": "#FFE0CC", // Gentle skin face
+      "K": "#443322", // Crown highlights
+      "W": "#FFFFFF", // Lace white collar
+      "Y": "#FECA57"  // Gold crown elements
+    },
+    funFact: "Regal royalty visiting from lands of cotton-candy dreams!",
+    sparkColor: "#FF8BBB"
+  }
+];
 
 const SPRITE_NORMAL = [
   ".....RRRRRR.....",
@@ -112,6 +177,11 @@ export default function GameCanvas() {
   const [sfxOn, setSfxOn] = useState<boolean>(true);
   const [difficultyLabel, setDifficultyLabel] = useState<string>("NOVICE");
 
+  // New customizable parameters
+  const [selectedCharacterId, setSelectedCharacterId] = useState<string>("MARIO");
+  const [startDifficulty, setStartDifficulty] = useState<"NOVICE" | "CHALLENGING" | "EXPERT">("NOVICE");
+  const [activeBgmTrack, setActiveBgmTrack] = useState<"CASTLE" | "SPEEDWAY">("CASTLE");
+
   // Keep a clean engine reference of physical frames/data to run 60FPS lock
   const engineState = useRef({
     // Player values
@@ -127,6 +197,7 @@ export default function GameCanvas() {
 
     // Obstacle variables
     obstacles: [] as Obstacle[],
+    coins: [] as Coin[], // Floating coin arrays
     obstacleSpeed: 2.8,
     obstacleSpawnTimer: 0,
     baseGapHeight: 165,
@@ -166,6 +237,10 @@ export default function GameCanvas() {
   useEffect(() => {
     retroAudio.setMute(!sfxOn);
   }, [sfxOn]);
+
+  useEffect(() => {
+    retroAudio.setBgmTrack(activeBgmTrack);
+  }, [activeBgmTrack]);
 
   useEffect(() => {
     retroAudio.toggleBgm(musicOn && gameStatus === "PLAYING");
@@ -216,38 +291,79 @@ export default function GameCanvas() {
     setSfxOn(!sfxOn);
   };
 
-  // Resets the entire frame logic state
+  // Resets the entire frame logic state based on Difficulty and Characters selection
   const resetGame = () => {
     engineState.current.playerY = 240;
     engineState.current.playerVy = 0;
     engineState.current.playerRotation = 0;
     engineState.current.obstacles = [];
+    engineState.current.coins = [];
     engineState.current.obstacleSpawnTimer = 0;
     engineState.current.particles = [];
     engineState.current.currentFrame = 0;
-    engineState.current.obstacleSpeed = 2.8;
+
+    // Adjust parameters by selected difficulty
+    if (startDifficulty === "NOVICE") {
+      engineState.current.obstacleSpeed = 2.0;
+      engineState.current.baseGapHeight = 175;
+      engineState.current.minGapHeight = 125;
+      setDifficultyLabel("NOVICE FLYER");
+    } else if (startDifficulty === "CHALLENGING") {
+      engineState.current.obstacleSpeed = 2.9;
+      engineState.current.baseGapHeight = 155;
+      engineState.current.minGapHeight = 110;
+      setDifficultyLabel("ARCADE JUMPER");
+    } else {
+      engineState.current.obstacleSpeed = 3.8;
+      engineState.current.baseGapHeight = 135;
+      engineState.current.minGapHeight = 96;
+      setDifficultyLabel("EXPERTS ONLY");
+    }
+
     setScore(0);
-    setDifficultyLabel("NOVICE");
   };
 
-  // Spawns gold sparks around the player
+  // Spawns gold sparks around the player using their character's thematic colors
   const spawnScoreStars = (px: number, py: number) => {
-    const starColors = ["#f1c40f", "#f39c12", "#ffffff", "#ffea00"];
+    const activeChar = CHARACTERS.find(c => c.id === selectedCharacterId) || CHARACTERS[0];
+    const starColors = [activeChar.sparkColor, "#FFF", "#FFEA00", "#F1C40F"];
     const particlesArr = engineState.current.particles;
     
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 22; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = Math.random() * 4 + 2;
+      const speed = Math.random() * 4.5 + 2.5;
       particlesArr.push({
         x: px,
         y: py,
         vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 1,
+        vy: Math.sin(angle) * speed - 1.2,
         color: starColors[Math.floor(Math.random() * starColors.length)],
         size: Math.random() * 4 + 3,
         life: 1.0,
-        decay: Math.random() * 0.04 + 0.02,
-        gravity: 0.12
+        decay: Math.random() * 0.045 + 0.02,
+        gravity: 0.11
+      });
+    }
+  };
+
+  // Spark burst specifically for shiny coin collection
+  const spawnCoinCollectionStars = (cx: number, cy: number) => {
+    const coinColors = ["#FFEA00", "#F39C12", "#FFFFFF", "#FFE000"];
+    const particlesArr = engineState.current.particles;
+    
+    for (let i = 0; i < 12; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = Math.random() * 3.5 + 1.5;
+      particlesArr.push({
+        x: cx,
+        y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 0.5,
+        color: coinColors[Math.floor(Math.random() * coinColors.length)],
+        size: Math.random() * 3 + 2.5,
+        life: 1.0,
+        decay: Math.random() * 0.05 + 0.03,
+        gravity: 0.08
       });
     }
   };
@@ -322,7 +438,7 @@ export default function GameCanvas() {
     // 3. Obstacle Generator and updates
     state.obstacleSpawnTimer++;
     // Spawning frequency depends on current difficulty speed
-    const spawnRate = Math.max(85, 140 - Math.min(score * 1.5, 40));
+    const spawnRate = Math.max(80, 140 - Math.min(score * 1.5, 40));
     if (state.obstacleSpawnTimer >= spawnRate) {
       state.obstacleSpawnTimer = 0;
       
@@ -341,11 +457,52 @@ export default function GameCanvas() {
         passed: false,
         width: 76
       });
+
+      // Spawn a shiny coin in the middle of the gap
+      state.coins.push({
+        x: GAME_WIDTH + 38, // Centered inside the 76px width obstacle
+        y: gapY,
+        collected: false,
+        angleOffset: Math.random() * Math.PI
+      });
+
+      // 55% chance to spawn an extra floating coin slightly ahead or behind to reward high precision flight
+      if (Math.random() > 0.45) {
+        state.coins.push({
+          x: GAME_WIDTH + 140, 
+          y: gapY + (Math.random() * 90 - 45), 
+          collected: false,
+          angleOffset: Math.random() * Math.PI
+        });
+      }
     }
 
-    // Difficulty labels based on incremental scores
-    const currentSpeed = 2.8 + Math.min(score * 0.07, 3.2);
+    // Difficulty speed adjustment escalates as score increases
+    const startSpeed = startDifficulty === "NOVICE" ? 2.0 : startDifficulty === "CHALLENGING" ? 2.9 : 3.8;
+    const currentSpeed = startSpeed + Math.min(score * 0.08, 3.5);
     state.obstacleSpeed = currentSpeed;
+
+    // Update floating coins and check for player contact
+    const px = GAME_WIDTH / 4 + 20; // fixed player position X
+    const py = state.playerY;
+    const pw = state.playerWidth;
+
+    state.coins.forEach((coin, index) => {
+      coin.x -= state.obstacleSpeed;
+
+      if (!coin.collected) {
+        const contactDist = Math.hypot(coin.x - px, coin.y - py);
+        if (contactDist < (pw / 2 + 13)) {
+          coin.collected = true;
+          setScore(prev => prev + 2); // Coins award a generous +2 points!
+          spawnCoinCollectionStars(coin.x, coin.y);
+          retroAudio.playCoin();
+        }
+      }
+    });
+
+    // Strip out collected and offscreen coins
+    state.coins = state.coins.filter(c => !c.collected && c.x + 40 > 0);
 
     state.obstacles.forEach((obs, index) => {
       obs.x -= state.obstacleSpeed;
@@ -558,7 +715,8 @@ export default function GameCanvas() {
     pw: number,
     ph: number,
     angle: number,
-    frame: string[]
+    frame: string[],
+    palette: Record<string, string>
   ) => {
     ctx.save();
     
@@ -576,8 +734,8 @@ export default function GameCanvas() {
       
       for (let c = 0; c < 16; c++) {
         const char = rowStr[c];
-        if (char !== "." && SPRITE_COLORS[char]) {
-          ctx.fillStyle = SPRITE_COLORS[char];
+        if (char !== "." && palette[char]) {
+          ctx.fillStyle = palette[char];
           // Round positions slightly to maintain solid crisp pixels
           ctx.fillRect(
             Math.round(-pw / 2 + c * pixelW), 
@@ -618,6 +776,33 @@ export default function GameCanvas() {
     ctx.arc(440, GAME_HEIGHT - 60, 100, Math.PI, 0);
     ctx.fill();
 
+    ctx.restore();
+  };
+
+  // Draw golden spinning coin medallion
+  const drawCoin = (ctx: CanvasRenderingContext2D, cx: number, cy: number, frameTick: number) => {
+    ctx.save();
+    // Beautiful spinning coin: use Math.abs of sine for metallic width scaling
+    const widthScale = Math.abs(Math.sin((frameTick * 0.15) + (cx * 0.05)));
+    
+    // Outer golden metallic body
+    ctx.fillStyle = "#F39C12"; // Deep gold
+    ctx.strokeStyle = "#F1C40F"; // Shiny bright gold
+    ctx.lineWidth = 1.8;
+    
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 9 * widthScale, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Secondary inner shine details
+    if (widthScale > 0.25) {
+      ctx.fillStyle = "#FFFFFF";
+      ctx.beginPath();
+      ctx.ellipse(cx - 2 * widthScale, cy - 2, 1.8 * widthScale, 3.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
     ctx.restore();
   };
 
@@ -669,6 +854,11 @@ export default function GameCanvas() {
             drawBrickWall(ctx, obs.x, botY, obs.width, botH, false);
           });
 
+          // RENDER FLOATING GOLD COINS
+          engineState.current.coins.forEach(coin => {
+            drawCoin(ctx, coin.x, coin.y, engineState.current.currentFrame);
+          });
+
           // RENDER SOIL SCROLLING GROUND
           const groundX = engineState.current.groundScrollX;
           const groundH = 60;
@@ -698,7 +888,8 @@ export default function GameCanvas() {
           const size = engineState.current.playerWidth;
           const activeSprite = engineState.current.isFlapping ? SPRITE_JUMP : SPRITE_NORMAL;
 
-          drawPixelPlumber(ctx, px, playerY, size, size, rotation, activeSprite);
+          const activeChar = CHARACTERS.find(c => c.id === selectedCharacterId) || CHARACTERS[0];
+          drawPixelPlumber(ctx, px, playerY, size, size, rotation, activeSprite, activeChar.palette);
         }
       }
 
@@ -710,7 +901,7 @@ export default function GameCanvas() {
     return () => {
       cancelAnimationFrame(animId);
     };
-  }, [gameStatus, score, highScore]);
+  }, [gameStatus, score, highScore, selectedCharacterId, startDifficulty, activeBgmTrack]);
 
   // Handle global key events for desktop interaction
   useEffect(() => {
@@ -925,6 +1116,127 @@ export default function GameCanvas() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* 🎮 RETRO ARCADE OPTIONS CABINET DASHBOARD */}
+      <div 
+        className="w-full mt-4 bg-neutral-900 border-4 border-neutral-800 rounded-2xl p-4 text-left font-mono drop-shadow-xl space-y-4"
+        id="arcade-dashboard"
+      >
+        <div className="border-b border-neutral-800 pb-2 flex justify-between items-center text-xs">
+          <span className="text-yellow-400 font-bold uppercase tracking-wider flex items-center gap-1.5 animate-pulse">
+            <Sparkles size={13} className="text-yellow-400 shrink-0" /> CUSTOM CUSTOMIZATIONS
+          </span>
+          <span className="text-neutral-500 font-mono text-[9px]">SYSTEM: CHIP-CABINET</span>
+        </div>
+
+        {/* 1. CHARACTER SELECTOR */}
+        <div>
+          <span className="block text-[10px] font-bold text-neutral-400 mb-2 uppercase tracking-wider">
+            ★ SELECT YOUR HERO JUMPER:
+          </span>
+          <div className="grid grid-cols-2 gap-2">
+            {CHARACTERS.map(char => {
+              const isSelected = selectedCharacterId === char.id;
+              return (
+                <button
+                  key={char.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedCharacterId(char.id);
+                    retroAudio.playJump();
+                  }}
+                  className={`relative flex items-center gap-2.5 p-2 rounded-xl text-left transition border ${
+                    isSelected 
+                      ? 'bg-neutral-800 border-yellow-400 text-white shadow-md' 
+                      : 'bg-neutral-950 border-neutral-800/80 hover:bg-neutral-800/40 text-neutral-400'
+                  }`}
+                  id={`char-select-${char.id}`}
+                >
+                  {/* Dynamic mini-badge preview */}
+                  <div 
+                    className="w-5.5 h-5.5 rounded-md shrink-0 border border-neutral-800 flex items-center justify-center text-white font-bold text-[10px]"
+                    style={{ 
+                      backgroundColor: char.primary, 
+                      textShadow: "1px 1px 0px rgba(0,0,0,0.8)" 
+                    }}
+                  >
+                    {char.name[0]}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="block text-[10px] font-bold truncate leading-none mb-0.5">{char.name}</span>
+                    <span className="block text-[8px] text-neutral-500 truncate leading-none">{char.funFact}</span>
+                  </div>
+                  {isSelected && (
+                    <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse shrink-0"></span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 2. GAME DIFFICULTY SELECTOR */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <span className="block text-[10px] font-bold text-neutral-400 mb-2 uppercase tracking-wider">
+              ★ PHYSICS DIFFICULTY:
+            </span>
+            <div className="flex bg-neutral-950 rounded-lg p-0.5 border border-neutral-850 w-full" id="diff-toggle-group">
+              {(["NOVICE", "CHALLENGING", "EXPERT"] as const).map(diff => {
+                const isSel = startDifficulty === diff;
+                return (
+                  <button
+                    key={diff}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setStartDifficulty(diff);
+                      retroAudio.playPoint();
+                    }}
+                    className={`flex-1 text-center py-2 text-[8px] font-bold rounded transition ${
+                      isSel
+                        ? 'bg-red-500 text-white font-extrabold shadow-inner'
+                        : 'text-neutral-500 hover:text-neutral-300'
+                    }`}
+                    id={`diff-btn-${diff}`}
+                  >
+                    {diff === "NOVICE" ? "EASY" : diff === "CHALLENGING" ? "NORMAL" : "HARD"}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 3. BGM TRACK SELECTOR */}
+          <div>
+            <span className="block text-[10px] font-bold text-neutral-400 mb-2 uppercase tracking-wider">
+              ★ MUSIC MIX TRACK:
+            </span>
+            <div className="flex bg-neutral-950 rounded-lg p-0.5 border border-neutral-850 w-full" id="track-toggle-group">
+              {(["CASTLE", "SPEEDWAY"] as const).map(track => {
+                const isSel = activeBgmTrack === track;
+                return (
+                  <button
+                    key={track}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveBgmTrack(track);
+                      retroAudio.playStart();
+                    }}
+                    className={`flex-1 text-center py-2 text-[8px] font-bold rounded transition ${
+                      isSel
+                        ? 'bg-yellow-400 text-neutral-950 font-extrabold'
+                        : 'text-neutral-500 hover:text-neutral-300'
+                    }`}
+                    id={`track-btn-${track}`}
+                  >
+                    {track === "CASTLE" ? "CASTLE 🏰" : "SPEEDRUN 🏁"}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Under-couch visual controls info for accessibility & guidance */}
