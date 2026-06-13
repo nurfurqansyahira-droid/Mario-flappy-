@@ -18,6 +18,8 @@ interface DashboardViewProps {
   isAudioMuted: boolean;
   onMuteToggle: () => void;
   onSignOut: () => void;
+  gamePlayMode: "cabinet" | "fullscreen";
+  setGamePlayMode: (mode: "cabinet" | "fullscreen") => void;
 }
 
 export default function DashboardView({
@@ -28,7 +30,9 @@ export default function DashboardView({
   onOpenPublishingPanel,
   isAudioMuted,
   onMuteToggle,
-  onSignOut
+  onSignOut,
+  gamePlayMode,
+  setGamePlayMode
 }: DashboardViewProps) {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [dailyQuests, setDailyQuests] = useState<DailyQuestItem[]>([]);
@@ -181,6 +185,33 @@ export default function DashboardView({
               <span className="font-mono text-[8px] text-neutral-500 uppercase mt-1 block">Customize skin & exhaust trails</span>
             </div>
           </button>
+        </div>
+
+        {/* Play Mode Selector */}
+        <div className="bg-neutral-900 border border-neutral-805 p-1.5 rounded-2xl flex items-center justify-between gap-2">
+          <span className="font-mono text-[9px] uppercase tracking-wider text-neutral-400 font-bold ml-2">
+            🖥️ Play Screen Mode
+          </span>
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => {
+                retroAudio.playPoint();
+                setGamePlayMode("cabinet");
+              }}
+              className={`px-3 py-1.5 rounded-xl font-mono text-[8px] uppercase font-black tracking-widest transition cursor-pointer ${gamePlayMode === "cabinet" ? "bg-gradient-to-r from-pink-600 to-pink-700 text-white shadow-md shadow-pink-500/20" : "bg-neutral-950 text-neutral-500 hover:text-white"}`}
+            >
+              🕹️ Cabinet
+            </button>
+            <button
+              onClick={() => {
+                retroAudio.playPoint();
+                setGamePlayMode("fullscreen");
+              }}
+              className={`px-3 py-1.5 rounded-xl font-mono text-[8px] uppercase font-black tracking-widest transition cursor-pointer ${gamePlayMode === "fullscreen" ? "bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md shadow-indigo-500/20" : "bg-neutral-950 text-neutral-500 hover:text-white"}`}
+            >
+              🖥️ Fullscreen
+            </button>
+          </div>
         </div>
 
         {/* 📅 Tab Slot A: 7-Day Rewards Calendar (Grid check board) */}

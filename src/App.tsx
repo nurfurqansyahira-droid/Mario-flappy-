@@ -24,6 +24,7 @@ type ViewState = "SPLASH" | "AUTH" | "DASHBOARD" | "GAMEPLAY";
 export default function App() {
   const [view, setView] = useState<ViewState>("SPLASH");
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [gamePlayMode, setGamePlayMode] = useState<"cabinet" | "fullscreen">("cabinet");
   
   // Dialog Open states
   const [isStoreOpen, setIsStoreOpen] = useState(false);
@@ -171,6 +172,56 @@ export default function App() {
     handleUpdateProfile(updated);
   };
 
+  if (view === "SPLASH") {
+    return <SplashView onComplete={handleSplashComplete} />;
+  }
+
+  if (view === "AUTH") {
+    return (
+      <div className="min-h-screen bg-[#050508] text-white flex flex-col justify-center items-center font-sans select-none overflow-x-hidden relative p-4">
+        {/* 🔮 1. HIGH-FIDELITY PARALLAX 3D BACKDROP */}
+        <div 
+          className="absolute inset-0 pointer-events-none transition-transform duration-300 ease-out z-0"
+          style={{
+            transform: `translate3d(${mouseCoord.x}px, ${mouseCoord.y}px, 0)`,
+            background: "radial-gradient(circle at 45% 25%, rgba(236, 72, 153, 0.12) 0%, transparent 50%), radial-gradient(circle at 80% 70%, rgba(99, 102, 241, 0.12) 0%, transparent 45%)"
+          }}
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.01)_1px,transparent_1px),linear-gradient(95deg,rgba(255,255,255,0.01)_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none opacity-30 z-0" />
+        <div className="absolute top-[20%] left-[5%] w-72 h-72 bg-gradient-to-tr from-pink-500/10 to-transparent rounded-full blur-[80px] animate-pulse pointer-events-none" />
+        <div className="absolute bottom-[15%] right-[8%] w-96 h-96 bg-gradient-to-tr from-indigo-500/10 to-transparent rounded-full blur-[100px] pointer-events-none" />
+        
+        <LoginView onLoginSuccess={handleLoginSuccess} />
+      </div>
+    );
+  }
+
+  if (view === "GAMEPLAY" && gamePlayMode === "fullscreen" && profile) {
+    return (
+      <div className="min-h-screen w-full bg-[#030305] text-white flex flex-col justify-center items-center font-sans overflow-hidden p-0 sm:p-4 relative">
+        <div 
+          className="absolute inset-0 pointer-events-none transition-transform duration-300 ease-out z-0"
+          style={{
+            transform: `translate3d(${mouseCoord.x}px, ${mouseCoord.y}px, 0)`,
+            background: "radial-gradient(circle at 45% 25%, rgba(236, 72, 153, 0.08) 0%, transparent 50%), radial-gradient(circle at 80% 70%, rgba(99, 102, 241, 0.08) 0%, transparent 45%)"
+          }}
+        />
+        <div className="w-full h-[100dvh] sm:h-[650px] sm:max-w-[490px] sm:max-h-[85vh] aspect-[480/640] relative sm:border-[8px] sm:border-neutral-900 sm:rounded-[2.5rem] overflow-hidden shadow-2xl z-50">
+          <GameCanvas 
+            equippedCharacterId={profile.equippedCharacterId}
+            equippedTrailId={profile.equippedTrailId}
+            equippedThemeId={profile.equippedThemeId}
+            onGameFinished={handleGameFinished}
+            isAudioMuted={isAudioMuted}
+            onMuteToggle={() => setIsAudioMuted(!isAudioMuted)}
+            isFullscreen={true}
+            onToggleFullscreenMode={() => setGamePlayMode("cabinet")}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#050508] text-white flex flex-col font-sans select-none overflow-x-hidden relative">
       
@@ -296,30 +347,6 @@ export default function App() {
             <div className="w-full aspect-[480/640] rounded-[2.5rem] bg-black overflow-hidden relative border border-neutral-950">
               
               <AnimatePresence mode="wait">
-                {view === "SPLASH" && (
-                  <motion.div 
-                    key="splash" 
-                    exit={{ opacity: 0 }} 
-                    transition={{ duration: 0.35 }}
-                    className="absolute inset-0 w-full h-full"
-                  >
-                    <SplashView onComplete={handleSplashComplete} />
-                  </motion.div>
-                )}
-
-                {view === "AUTH" && (
-                  <motion.div 
-                    key="auth" 
-                    initial={{ opacity: 0, scale: 0.98 }} 
-                    animate={{ opacity: 1, scale: 1 }} 
-                    exit={{ opacity: 0, scale: 0.98 }}
-                    transition={{ duration: 0.3 }}
-                    className="absolute inset-0 w-full h-full"
-                  >
-                    <LoginView onLoginSuccess={handleLoginSuccess} />
-                  </motion.div>
-                )}
-
                 {view === "DASHBOARD" && profile && (
                   <motion.div 
                     key="dashboard"
@@ -338,11 +365,13 @@ export default function App() {
                       isAudioMuted={isAudioMuted}
                       onMuteToggle={() => setIsAudioMuted(!isAudioMuted)}
                       onSignOut={handleSignOut}
+                      gamePlayMode={gamePlayMode}
+                      setGamePlayMode={setGamePlayMode}
                     />
                   </motion.div>
                 )}
 
-                {view === "GAMEPLAY" && profile && (
+                {view === "GAMEPLAY" && gamePlayMode === "cabinet" && profile && (
                   <motion.div 
                     key="gameplay"
                     initial={{ opacity: 0 }}
@@ -358,6 +387,8 @@ export default function App() {
                       onGameFinished={handleGameFinished}
                       isAudioMuted={isAudioMuted}
                       onMuteToggle={() => setIsAudioMuted(!isAudioMuted)}
+                      isFullscreen={false}
+                      onToggleFullscreenMode={() => setGamePlayMode("fullscreen")}
                     />
                   </motion.div>
                 )}

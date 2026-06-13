@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { retroAudio } from "../audio";
 import { GameStatus } from "../types";
 import { MOTOR_GIRLS_RECORDS, ENGINE_TRAILS_RECORDS, SPEEDWAY_THEMES_RECORDS } from "../data";
-import { Volume2, VolumeX, Pause, Play, RotateCcw, Sparkles } from "lucide-react";
+import { Volume2, VolumeX, Pause, Play, RotateCcw, Sparkles, Maximize2, Minimize2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 const GAME_WIDTH = 480;
@@ -49,6 +49,8 @@ interface GameCanvasProps {
   onGameFinished: (score: number, coins: number) => void;
   isAudioMuted: boolean;
   onMuteToggle: () => void;
+  isFullscreen: boolean;
+  onToggleFullscreenMode: () => void;
 }
 
 export default function GameCanvas({
@@ -57,7 +59,9 @@ export default function GameCanvas({
   equippedThemeId,
   onGameFinished,
   isAudioMuted,
-  onMuteToggle
+  onMuteToggle,
+  isFullscreen,
+  onToggleFullscreenMode
 }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -119,6 +123,30 @@ export default function GameCanvas({
     retroAudio.toggleBgm(gameStatus === "PLAYING" && !isAudioMuted);
     return () => {
       retroAudio.toggleBgm(false);
+    };
+  }, [gameStatus, isAudioMuted]);
+
+  // Keyboard controls listener for Desktop
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === "Space" || e.code === "ArrowUp") {
+        e.preventDefault();
+        handleJumpAction();
+      }
+      if (e.code === "KeyP") {
+        e.preventDefault();
+        if (gameStatus === "PLAYING") {
+          setGameStatus("PAUSED");
+          retroAudio.toggleBgm(false);
+        } else if (gameStatus === "PAUSED") {
+          setGameStatus("PLAYING");
+          retroAudio.toggleBgm(!isAudioMuted);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [gameStatus, isAudioMuted]);
 
@@ -907,6 +935,14 @@ export default function GameCanvas({
     ctx.restore();
   };
 
+  const handleInputTrigger = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    if (e.type === "touchstart") {
+      e.stopPropagation();
+    }
+    handleJumpAction();
+  };
+
   return (
     <div className="w-full h-full bg-neutral-950 flex flex-col justify-between items-center relative font-sans">
       {/* 60 FPS HTML5 graphics canvas */}
@@ -928,6 +964,19 @@ export default function GameCanvas({
 
         {/* Right controls: pause / mute buttons */}
         <div className="flex items-center gap-2 pointer-events-auto">
+          {onToggleFullscreenMode && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleFullscreenMode();
+              }}
+              className="p-2 bg-neutral-900/80 hover:bg-neutral-800 border border-neutral-800 text-white rounded-xl transition cursor-pointer"
+              title={isFullscreen ? "Shrink to Cabinet" : "Go Fullscreen"}
+            >
+              {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+            </button>
+          )}
+
           <button
             onClick={togglePause}
             className="p-2 bg-neutral-900/80 hover:bg-neutral-800 border border-neutral-800 text-white rounded-xl transition cursor-pointer"
@@ -940,9 +989,20 @@ export default function GameCanvas({
       {/* 🚀 Giant Invisible Screen Clickpad Layer for responsive one-handed taps */}
       {gameStatus === "PLAYING" && (
         <div
-          onClick={handleJumpAction}
-          className="absolute inset-0 z-0 cursor-pointer select-none active:bg-white/3"
-        />
+          onMouseDown={handleInputTrigger}
+          onTouchStart={handleInputTrigger}
+          className="absolute inset-x-0 bottom-0 top-[12%] z-0 cursor-pointer select-none active:bg-white/[0.04] transition-all flex flex-col justify-end pb-8 items-center"
+        >
+          {/* Subtle responsive touch help indicator at bottom */}
+          <div className="bg-neutral-950/85 backdrop-blur-md border border-neutral-800/80 px-4 py-2 rounded-2xl flex flex-col items-center gap-1.5 text-center max-w-[280px] pointer-events-none shadow-xl border-pink-500/10 animate-pulse">
+            <span className="font-mono text-[9px] font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-indigo-400 uppercase">
+              ⚡ CLICK, TAP OR SPACEBAR TO JUMP
+            </span>
+            <span className="text-[7.5px] font-mono text-neutral-500 uppercase">
+              Bypass pipes • Collect 🪙 coins
+            </span>
+          </div>
+        </div>
       )}
 
       {/* 🚪 GAME STATUS SCREEN OVERLAYS */}
@@ -969,7 +1029,8 @@ export default function GameCanvas({
               {/* Tap to start button */}
               <button
                 id="start-match-action"
-                onClick={handleJumpAction}
+                onMouseDown={handleInputTrigger}
+                onTouchStart={handleInputTrigger}
                 className="w-full py-3 bg-gradient-to-r from-pink-600 to-indigo-600 hover:from-pink-500 hover:to-indigo-500 rounded-xl font-bold font-mono tracking-widest text-[11px] text-white shadow-[0_5px_15px_rgba(219,39,119,0.3)] animate-pulse transition cursor-pointer"
               >
                 TOUCH TO IGNITE
