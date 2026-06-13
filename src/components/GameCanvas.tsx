@@ -587,36 +587,105 @@ export default function GameCanvas() {
     return () => clearTimeout(timer);
   };
 
-  // Drawing routines inside canvas context
-  const drawGrassSegment = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => {
-    // bg-[#71C358]
-    ctx.fillStyle = "#71C358";
-    ctx.fillRect(x, y, w, h);
+  // Draw magnificent 3D Speedway Floor with race-track textures and scrolling perspective road-markings
+  const draw3DSpeedwayFloor = (ctx: CanvasRenderingContext2D, scrollX: number, y: number, w: number, h: number) => {
+    ctx.save();
     
-    // Draw repeating 45deg stripe background overlay (with low opacity, matching design's repeating-linear-gradient)
-    ctx.strokeStyle = "rgba(0, 0, 0, 0.15)";
-    ctx.lineWidth = 2.5;
-    for (let currentX = x - h; currentX < x + w + h; currentX += 20) {
+    // 1. Draw solid grassy shoulder base (rich green lawn gradient)
+    const grassGrad = ctx.createLinearGradient(0, y, 0, y + h);
+    grassGrad.addColorStop(0, "#27AE60"); // Trim grass
+    grassGrad.addColorStop(1, "#1E8449"); // Deep turf green
+    ctx.fillStyle = grassGrad;
+    ctx.fillRect(0, y, w, h);
+
+    // 2. Main tarmac asphalt speedway strip running across the bottom
+    // We position the asphalt from y + 10 to y + 54 (44px wide race lane!)
+    const roadY = y + 10;
+    const roadH = h - 10;
+    
+    // Smooth 3D asphalt linear shading
+    const asphaltGrad = ctx.createLinearGradient(0, roadY, 0, roadY + roadH);
+    asphaltGrad.addColorStop(0, "#2C3E50");   // Clean charcoal asphalt top rim
+    asphaltGrad.addColorStop(0.35, "#34495E"); // Light-absorbing tarmac body
+    asphaltGrad.addColorStop(1, "#1F2A38");   // Bottom shade
+    
+    ctx.fillStyle = asphaltGrad;
+    ctx.fillRect(0, roadY, w, roadH);
+
+    // Top white edge safety lines for racing lanes
+    ctx.fillStyle = "rgba(255, 255, 255, 0.72)";
+    ctx.fillRect(0, roadY, w, 2.5); // top white line
+    ctx.fillRect(0, roadY + roadH - 2.5, w, 2.5); // bottom white line
+
+    // 3. Scrolling middle dashes (Dashed road markings)
+    const dashW = 28;
+    const dashH = 3;
+    const dashSpacing = 24;
+    const dashY = roadY + (roadH / 2) - (dashH / 2);
+    const startX = (scrollX * 1.5) % (dashW + dashSpacing); // speed adjustment for parallax feel
+    
+    ctx.fillStyle = "#F1C40F"; // Bright highway gold/yellow lane divider dashes
+    for (let curX = startX - (dashW + dashSpacing); curX < w + (dashW + dashSpacing); curX += (dashW + dashSpacing)) {
       ctx.beginPath();
-      ctx.moveTo(currentX, y);
-      ctx.lineTo(currentX + h, y + h);
-      ctx.stroke();
+      ctx.roundRect(curX, dashY, dashW, dashH, 1.5);
+      ctx.fill();
     }
+
+    // 4. Subtle speedway tyre skid marks (faded grey arcs for racing vibes)
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.12)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(w / 3, roadY + 12, 120, 15, -0.05, 0, Math.PI);
+    ctx.ellipse(w * 0.75, roadY + 22, 90, 10, -0.02, 0, Math.PI);
+    ctx.stroke();
+
+    ctx.restore();
   };
 
-  // Draw sleek stylish cloud (matches rounded-full opacity-80 shadow-[20px_10px_0_10px_white,-10px_5px_0_5px_white])
-  const drawPixCloud = (ctx: CanvasRenderingContext2D, cx: number, cy: number, scale: number) => {
+  // Draw gorgeous 3D volumetric glossy cloud with realistic depth gradients and soft drop-shadow
+  const draw3DCloud = (ctx: CanvasRenderingContext2D, cx: number, cy: number, scale: number) => {
     ctx.save();
-    ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
-    ctx.beginPath();
+    
     const r = 18 * scale;
-    // Main base
+    
+    // Ambient cloud shadow slightly offset below
+    ctx.shadowColor = "rgba(10, 30, 80, 0.12)";
+    ctx.shadowBlur = 10 * scale;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 6 * scale;
+    
+    // Create a beautiful glossy 3D linear gradient for puff cores
+    const cloudGrad = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+    cloudGrad.addColorStop(0, "#FFFFFF");         // Pure bright sunlit rim
+    cloudGrad.addColorStop(0.65, "#F7F9FC");      // Soft clean cloud body
+    cloudGrad.addColorStop(1, "#D5E0F2");         // Shadowed ambient blue underside
+    
+    ctx.fillStyle = cloudGrad;
+    ctx.beginPath();
+    
+    // Multi-puff 3D volumetric composition
+    // 1. Center puff
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    // Left puff shadow
-    ctx.arc(cx - r * 0.9, cy + r * 0.2, r * 0.65, 0, Math.PI * 2);
-    // Right secondary puff
-    ctx.arc(cx + r * 1.1, cy + r * 0.1, r * 0.8, 0, Math.PI * 2);
+    // 2. Left side puff
+    ctx.arc(cx - r * 0.85, cy + r * 0.1, r * 0.65, 0, Math.PI * 2);
+    // 3. Right side puff
+    ctx.arc(cx + r * 0.9, cy + r * 0.05, r * 0.75, 0, Math.PI * 2);
+    // 4. Far left mini-puff
+    ctx.arc(cx - r * 1.4, cy + r * 0.2, r * 0.45, 0, Math.PI * 2);
+    // 5. Far right mini-puff
+    ctx.arc(cx + r * 1.45, cy + r * 0.15, r * 0.48, 0, Math.PI * 2);
+    
     ctx.fill();
+    
+    // Glossy highlights (semi-transparent white overlay at the top edges for a 3D bubble shine)
+    ctx.shadowColor = "transparent"; // reset shadow
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - r * 0.5, r * 0.5, r * 0.25, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx - r * 0.8, cy - r * 0.2, r * 0.35, r * 0.15, 0, 0, Math.PI * 2);
+    ctx.fill();
+    
     ctx.restore();
   };
 
@@ -1110,22 +1179,36 @@ export default function GameCanvas() {
         if (ctx) {
           ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-          // RENDER SKY BACKDROP (Height Gradient)
-          const grad = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT - 60);
-          grad.addColorStop(0, PALETTE.clearSky);
-          grad.addColorStop(1, PALETTE.darkSky);
-          ctx.fillStyle = grad;
+          // RENDER SKY BACKDROP (Gorgeous high-res sky linear altitude gradient)
+          const skyGrad = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT - 60);
+          skyGrad.addColorStop(0, "#1F618D");   // Royal blue altitude
+          skyGrad.addColorStop(0.4, "#2980B9"); // Midday sky blue
+          skyGrad.addColorStop(0.8, "#AED6F1"); // Atmospheric sunlit haze
+          skyGrad.addColorStop(1, "#EBF5FB");   // Horizon glow
+          ctx.fillStyle = skyGrad;
           ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-          // SUN - Beautiful retro pixel circle
-          ctx.fillStyle = "rgba(255, 235, 140, 0.55)";
+          // SUN - Magnificent glowing 3D vector solar aura
+          ctx.save();
+          const sunX = GAME_WIDTH - 80;
+          const sunY = 75;
+          const sunRadius = 45;
+          
+          const sunGrad = ctx.createRadialGradient(sunX, sunY, 2, sunX, sunY, sunRadius + 24);
+          sunGrad.addColorStop(0, "rgba(255, 255, 255, 0.95)");      // Intense white center
+          sunGrad.addColorStop(0.2, "rgba(254, 211, 48, 0.90)");     // Rich solar yellow
+          sunGrad.addColorStop(0.5, "rgba(253, 150, 68, 0.35)");     // Warm sunset orange flare
+          sunGrad.addColorStop(1, "rgba(253, 150, 68, 0)");          // Outer atmosphere fadeout
+          
+          ctx.fillStyle = sunGrad;
           ctx.beginPath();
-          ctx.arc(GAME_WIDTH - 80, 70, 48, 0, Math.PI * 2);
+          ctx.arc(sunX, sunY, sunRadius + 24, 0, Math.PI * 2);
           ctx.fill();
+          ctx.restore();
 
-          // RENDER DRIFTING CLOUDS
+          // RENDER DRIFTING CLOUDS (High-Res 3D Volumetric vector clouds)
           engineState.current.clouds.forEach(cloud => {
-            drawPixCloud(ctx, cloud.x, cloud.y, cloud.size);
+            draw3DCloud(ctx, cloud.x, cloud.y, cloud.size);
           });
 
           // RENDER BACKGROUND PARALLAX HILLS
@@ -1148,41 +1231,57 @@ export default function GameCanvas() {
             drawCoin(ctx, coin.x, coin.y, engineState.current.currentFrame);
           });
 
-          // RENDER SOIL SCROLLING GROUND
+          // RENDER 3D SPEEDWAY FLOOR
           const groundX = engineState.current.groundScrollX;
           const groundH = 60;
           const groundY = GAME_HEIGHT - 60;
-          
-          // Draw multiple segments side-by-side to allow slide-scrolling seamlessly
-          for (let i = 0; i <= Math.ceil(GAME_WIDTH / 48) + 1; i++) {
-            drawGrassSegment(ctx, groundX + i * 48, groundY, 48, 60);
-          }
+          draw3DSpeedwayFloor(ctx, groundX, groundY, GAME_WIDTH, groundH);
 
           // Top Border: scrolling Red & White checkered racing curb shoulder matching speedway scroll!
-          const curbH = 8;
-          const curbTileW = 16; // width of each checker tile
+          const curbH = 10; // increase slightly for a chunkier 3D look
+          const curbTileW = 20; // width of each checker tile
           const curbY = groundY;
           // Calculate proper scrolling start position
           const curbStartX = groundX % (curbTileW * 2);
           
           for (let cx = curbStartX - curbTileW * 2; cx < GAME_WIDTH + curbTileW * 2; cx += curbTileW * 2) {
-            // White checker tile
-            ctx.fillStyle = "#FFFFFF";
+            // White checker tile with 3D slope gradient
+            const whiteGrad = ctx.createLinearGradient(cx, curbY, cx, curbY + curbH);
+            whiteGrad.addColorStop(0, "#FFFFFF");
+            whiteGrad.addColorStop(1, "#EAECEE");
+            ctx.fillStyle = whiteGrad;
             ctx.fillRect(cx, curbY, curbTileW, curbH);
-            // Red checker tile
-            ctx.fillStyle = "#E74C3C";
+            
+            // Red checker tile with 3D slope gradient
+            const redGrad = ctx.createLinearGradient(cx + curbTileW, curbY, cx + curbTileW, curbY + curbH);
+            redGrad.addColorStop(0, "#EC7063");
+            redGrad.addColorStop(1, "#C0392B");
+            ctx.fillStyle = redGrad;
             ctx.fillRect(cx + curbTileW, curbY, curbTileW, curbH);
+
+            // Sleek specular white line segment on top edge of curb to give 3D shiny reflection
+            ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+            ctx.fillRect(cx, curbY, curbTileW * 2, 1.5);
           }
 
           // Sleek dark separation line under racing shoulder
           ctx.fillStyle = "#113A17";
           ctx.fillRect(0, groundY + curbH, GAME_WIDTH, 2);
 
-          // RENDER ACTIVE PARTICLES / SCORE SPARKS
+          // RENDER ACTIVE PARTICLES / SCORE SPARKS (Round 3D glowing vector sparks!)
           engineState.current.particles.forEach(part => {
+            ctx.save();
             ctx.fillStyle = part.color;
             ctx.globalAlpha = part.life;
-            ctx.fillRect(part.x - part.size/2, part.y - part.size/2, part.size, part.size);
+            
+            // Add a vibrant 3D neon inner glow
+            ctx.shadowColor = part.color;
+            ctx.shadowBlur = 6;
+            
+            ctx.beginPath();
+            ctx.arc(part.x, part.y, part.size / 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
           });
           ctx.globalAlpha = 1.0; // restore normal transparency
 
