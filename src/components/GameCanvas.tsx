@@ -620,8 +620,8 @@ export default function GameCanvas() {
     ctx.restore();
   };
 
-  // Draw 8-bit bricks inside floating obstacle towers
-  const drawBrickWall = (
+  // Draw beautiful shiny high-resolution 3D Warp Pipes
+  const drawWarpPipe = (
     ctx: CanvasRenderingContext2D, 
     x: number, 
     y: number, 
@@ -631,180 +631,464 @@ export default function GameCanvas() {
   ) => {
     ctx.save();
     
-    // Standard tower border container shadow
-    ctx.strokeStyle = "#1a0805";
-    ctx.lineWidth = 4;
-    ctx.fillStyle = PALETTE.brickRed;
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeRect(x, y, w, h);
+    // 1. Create a beautiful glossy green 3D cylindrical linear gradient for the main pipe body
+    const pipeGrad = ctx.createLinearGradient(x, y, x + w, y);
+    pipeGrad.addColorStop(0, "#145A32");   // Very dark green edge shadow
+    pipeGrad.addColorStop(0.18, "#1E8449"); // Shade transition
+    pipeGrad.addColorStop(0.35, "#58D68D"); // Bright vertical reflection stripe (matte shine!)
+    pipeGrad.addColorStop(0.65, "#2ECC71"); // Smooth green body
+    pipeGrad.addColorStop(0.85, "#27AE60"); // Rich grass green
+    pipeGrad.addColorStop(1, "#114B26");   // Back edge shadow
 
-    // Brick detailing pattern
-    const brickH = 14;
-    const brickW = 24;
-    ctx.strokeStyle = PALETTE.brickDark;
-    ctx.lineWidth = 2.5;
-
-    // Draw bounds horizontal lines
-    for (let currentY = 0; currentY < h; currentY += brickH) {
-      ctx.beginPath();
-      ctx.moveTo(x, y + currentY);
-      ctx.lineTo(x + w, y + currentY);
-      ctx.stroke();
-
-      // Horizontal bright highlight on top of brick row
-      ctx.fillStyle = PALETTE.brickLight;
-      ctx.fillRect(x + 2, y + currentY + 1, w - 4, 1.5);
-
-      // Stagger vertical joints
-      const rowNum = Math.floor(currentY / brickH);
-      const isShifted = rowNum % 2 === 0;
-      const startX = isShifted ? brickW / 2 : 0;
-      
-      for (let currentX = startX; currentX < w; currentX += brickW) {
-        ctx.beginPath();
-        ctx.moveTo(x + currentX, y + currentY);
-        ctx.lineTo(x + currentX, y + currentY + brickH);
-        ctx.stroke();
-
-        // Dark right-edge shadow
-        ctx.fillStyle = PALETTE.brickDark;
-        ctx.fillRect(x + currentX - 1.5, y + currentY + 2, 1.5, brickH - 3);
-      }
-    }
-
-    // Capping Stone (Tower Edge Interface / Castle crenellations)
-    // Draw capping blocks at the end where player passes
-    const capHeight = 26;
-    const capY = isTop ? (y + h - capHeight) : y;
-    
-    // Draw actual capping block
-    ctx.fillStyle = "#bdc3c7";
-    ctx.strokeStyle = "#2c3e50";
-    ctx.lineWidth = 3.5;
-    
-    // Cap overhangs slightly on the sides
-    const margin = 5;
-    const capX = x - margin;
-    const capW = w + margin * 2;
-    
-    ctx.fillRect(capX, capY, capW, capHeight);
-    ctx.strokeRect(capX, capY, capW, capHeight);
-
-    // Highlight top-left stone
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(capX + 2, capY + 2, capW - 4, 3);
-    ctx.fillRect(capX + 2, capY + 2, 3, capHeight - 4);
-
-    // Stone borders shadow
-    ctx.fillStyle = "#7f8c8d";
-    ctx.fillRect(capX + capW - 4, capY + 2, 2.5, capHeight - 4);
-    ctx.fillRect(capX + 2, capY + capHeight - 4, capW - 4, 2.5);
-
-    // Add castle detailing slits on the coping stones
-    ctx.fillStyle = "#2c3e50";
-    // 3 blocks slots
-    const slotW = 10;
-    const slotH = 12;
-    const slitY = isTop ? (capY + capHeight - slotH) : capY;
-    ctx.fillRect(capX + capW / 4 - slotW / 2, slitY, slotW, slotH);
-    ctx.fillRect(capX + (capW * 3) / 4 - slotW / 2, slitY, slotW, slotH);
-
-    ctx.restore();
-  };
-
-  // Renders the plumber using 16x16 pixel blocks scaled to fit
-  const drawPixelPlumber = (
-    ctx: CanvasRenderingContext2D,
-    px: number,
-    py: number,
-    pw: number,
-    ph: number,
-    angle: number,
-    frame: string[],
-    palette: Record<string, string>
-  ) => {
-    ctx.save();
-    
-    // Translate and rotate around plumber center
-    ctx.translate(px, py);
-    ctx.rotate(angle);
-
-    const pixelW = pw / 16;
-    const pixelH = ph / 16;
-
-    // Draw pixel grid centered around (0,0)
-    for (let r = 0; r < 16; r++) {
-      const rowStr = frame[r];
-      const screenY = -ph / 2 + r * pixelH;
-      
-      for (let c = 0; c < 16; c++) {
-        const char = rowStr[c];
-        if (char !== "." && palette[char]) {
-          ctx.fillStyle = palette[char];
-          // Round positions slightly to maintain solid crisp pixels
-          ctx.fillRect(
-            Math.round(-pw / 2 + c * pixelW), 
-            Math.round(screenY), 
-            Math.ceil(pixelW), 
-            Math.ceil(pixelH)
-          );
-        }
-      }
-    }
-
-    ctx.restore();
-  };
-
-  // Parallax Green Hills in background
-  const drawHills = (ctx: CanvasRenderingContext2D) => {
-    ctx.save();
-    ctx.fillStyle = "rgba(78, 163, 60, 0.40)"; // #4EA33C with 40% opacity
-
-    // Draw the 4 overlapping rounded hill arches exactly like the Sleek template:
-    // Hill A: w-[400px] h-[200px] rounded-t-[100px]
-    ctx.beginPath();
-    ctx.arc(80, GAME_HEIGHT - 60, 100, Math.PI, 0);
-    ctx.fill();
-
-    // Hill B: w-[350px] h-[160px] rounded-t-[90px]
-    ctx.beginPath();
-    ctx.arc(190, GAME_HEIGHT - 60, 90, Math.PI, 0);
-    ctx.fill();
-
-    // Hill C: w-[450px] h-[220px] rounded-t-[120px]
-    ctx.beginPath();
-    ctx.arc(310, GAME_HEIGHT - 60, 120, Math.PI, 0);
-    ctx.fill();
-
-    // Hill D: w-[380px] h-[180px] rounded-t-[100px]
-    ctx.beginPath();
-    ctx.arc(440, GAME_HEIGHT - 60, 100, Math.PI, 0);
-    ctx.fill();
-
-    ctx.restore();
-  };
-
-  // Draw golden spinning coin medallion
-  const drawCoin = (ctx: CanvasRenderingContext2D, cx: number, cy: number, frameTick: number) => {
-    ctx.save();
-    // Beautiful spinning coin: use Math.abs of sine for metallic width scaling
-    const widthScale = Math.abs(Math.sin((frameTick * 0.15) + (cx * 0.05)));
-    
-    // Outer golden metallic body
-    ctx.fillStyle = "#F39C12"; // Deep gold
-    ctx.strokeStyle = "#F1C40F"; // Shiny bright gold
-    ctx.lineWidth = 1.8;
+    // Set styling and fill main pipe body
+    ctx.fillStyle = pipeGrad;
+    ctx.strokeStyle = "#0B3C1A"; // Dark crisp border
+    ctx.lineWidth = 3.2;
     
     ctx.beginPath();
-    ctx.ellipse(cx, cy, 9 * widthScale, 11, 0, 0, Math.PI * 2);
+    ctx.rect(x, y, w, h);
     ctx.fill();
     ctx.stroke();
 
-    // Secondary inner shine details
-    if (widthScale > 0.25) {
+    // Horizontal dark lines or bands to simulate racing coupling joints on long shafts
+    ctx.strokeStyle = "rgba(11, 60, 26, 0.45)";
+    ctx.lineWidth = 2.2;
+    for (let py = 35; py < h; py += 68) {
+      const lineY = isTop ? (y + py) : (y + h - py);
+      ctx.beginPath();
+      ctx.moveTo(x, lineY);
+      ctx.lineTo(x + w, lineY);
+      ctx.stroke();
+    }
+
+    // 2. DRAW THE WIDER COUPLING PIPE LIP (26px tall, overhangs slightly)
+    const lipHeight = 26;
+    const lipY = isTop ? (y + h - lipHeight) : y;
+    const lipMargin = 5;
+    const lipX = x - lipMargin;
+    const lipW = w + lipMargin * 2;
+
+    // Gradient for the Pipe Lip (slightly shifted for perspective 3D shading)
+    const lipGrad = ctx.createLinearGradient(lipX, lipY, lipX + lipW, lipY);
+    lipGrad.addColorStop(0, "#196F3D");
+    lipGrad.addColorStop(0.18, "#2ECC71");
+    lipGrad.addColorStop(0.32, "#A9DFBF"); // Intense glossy light flare!
+    lipGrad.addColorStop(0.55, "#27AE60");
+    lipGrad.addColorStop(0.85, "#1E8449");
+    lipGrad.addColorStop(1, "#114B26");
+
+    ctx.fillStyle = lipGrad;
+    ctx.beginPath();
+    ctx.roundRect(lipX, lipY, lipW, lipHeight, 3);
+    ctx.fill();
+    ctx.stroke();
+
+    // Dark shadow rim underneath the lip projection
+    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+    const shadowY = isTop ? lipY : (lipY + lipHeight);
+    ctx.fillRect(x, shadowY - 4, w, 4);
+
+    // Inner pipe dark aperture depth (where the inner hole is)
+    ctx.fillStyle = "#091F0C"; // Deep endless dark green-black hole
+    const holeY = isTop ? (y + h - 4) : y;
+    ctx.fillRect(x + 2, holeY, w - 4, 4);
+
+    ctx.restore();
+  };
+
+  // Draw high-resolution stylized Kart Plumber racer with 3D gradient overlays,
+  // glossy racing helmet/cap visor, rotating sports tyres with axles and shiny exhaust sparks!
+  const drawHighResKartRacer = (
+    ctx: CanvasRenderingContext2D,
+    px: number,
+    py: number,
+    size: number,
+    rotation: number,
+    char: typeof CHARACTERS[0],
+    isFlapping: boolean,
+    frame: number
+  ) => {
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(rotation);
+
+    // Scaling factor based on standard size 40
+    const s = size / 40; 
+
+    // --- 1. ENGINE EXHAUST & FLAMES (at the back-left, around x: -18, y: 5) ---
+    const exhaustX = -18 * s;
+    const exhaustY = 6 * s;
+    
+    // Exhaust pipe (glossy metal tip)
+    ctx.fillStyle = "#7F8C8D";
+    ctx.strokeStyle = "#34495E";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.rect(exhaustX, exhaustY - 2 * s, 8 * s, 4 * s);
+    ctx.fill();
+    ctx.stroke();
+
+    // Animated thrust flame when flapping or idling
+    const flameScale = isFlapping ? (1.25 + Math.sin(frame * 0.45) * 0.3) : (0.75 + Math.sin(frame * 0.2) * 0.15);
+    if (flameScale > 0.1) {
+      const grad = ctx.createLinearGradient(exhaustX, exhaustY, exhaustX - 18 * s * flameScale, exhaustY);
+      grad.addColorStop(0, "rgba(255, 255, 255, 0.95)");
+      grad.addColorStop(0.3, "#F1C40F"); // yellow
+      grad.addColorStop(0.7, "#E67E22"); // orange
+      grad.addColorStop(1, "rgba(231, 76, 60, 0)"); // red fadeout
+      
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(exhaustX, exhaustY - 3 * s);
+      ctx.lineTo(exhaustX - 21 * s * flameScale, exhaustY);
+      ctx.lineTo(exhaustX, exhaustY + 3 * s);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // --- 2. THE KART CHASSIS (Sleek aerodynamic high-res body) ---
+    // Under carriage shadow
+    ctx.fillStyle = "rgba(0,0,0,0.32)";
+    ctx.beginPath();
+    ctx.ellipse(0, 14 * s, 21 * s, 4 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Side metal rail guards (silver chrome)
+    ctx.fillStyle = "#BDC3C7";
+    ctx.strokeStyle = "#7F8C8D";
+    ctx.lineWidth = 1.3 * s;
+    ctx.beginPath();
+    ctx.roundRect(-14 * s, 8 * s, 25 * s, 4 * s, 2 * s);
+    ctx.fill();
+    ctx.stroke();
+
+    // Main Nosecone & Body (themed to the character's primary color with 3D gradient)
+    const bodyGrad = ctx.createLinearGradient(-15 * s, -4 * s, 18 * s, 12 * s);
+    bodyGrad.addColorStop(0, char.primary);
+    bodyGrad.addColorStop(0.6, char.primary);
+    bodyGrad.addColorStop(1, char.secondary || "#2C3E50");
+
+    ctx.fillStyle = bodyGrad;
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 2 * s;
+
+    // Drawn as a modern formula-kart pod
+    ctx.beginPath();
+    ctx.moveTo(-16 * s, 8 * s);
+    ctx.lineTo(-12 * s, -1 * s);
+    ctx.quadraticCurveTo(-2 * s, -3 * s, 10 * s, 2 * s); // main curvature
+    ctx.lineTo(18 * s, 6 * s); // sleek front nose
+    ctx.lineTo(16 * s, 12 * s); // front bumper
+    ctx.lineTo(-14 * s, 12 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Front spoiler nose-wing & spoiler accent color
+    const spoilerGrad = ctx.createLinearGradient(10 * s, 3 * s, 19 * s, 11 * s);
+    spoilerGrad.addColorStop(0, "#FFFFFF");
+    spoilerGrad.addColorStop(0.5, char.primary);
+    spoilerGrad.addColorStop(1, "#111111");
+    ctx.fillStyle = spoilerGrad;
+    ctx.beginPath();
+    ctx.moveTo(10 * s, 4 * s);
+    ctx.lineTo(19 * s, 5 * s);
+    ctx.lineTo(18 * s, 11 * s);
+    ctx.lineTo(11 * s, 11 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Racing Number badge white circle
+    ctx.fillStyle = "#FFFFFF";
+    ctx.beginPath();
+    ctx.arc(4 * s, 6 * s, 4 * s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Racing digit/letter center (e.g. 'M', 'L', 'W', 'P')
+    ctx.fillStyle = "#000000";
+    ctx.font = `bold ${6 * s}px monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(char.id[0], 4 * s, 6.5 * s);
+
+    // Steering support bar & Steering Wheel
+    ctx.strokeStyle = "#34495E";
+    ctx.lineWidth = 2 * s;
+    ctx.beginPath();
+    ctx.moveTo(5 * s, 2 * s);
+    ctx.lineTo(-1 * s, -4 * s); // bar
+    ctx.stroke();
+
+    // Steering wheel (slanted ring)
+    ctx.strokeStyle = "#111111";
+    ctx.lineWidth = 2.5 * s;
+    ctx.beginPath();
+    ctx.ellipse(-1 * s, -4 * s, 2 * s, 4 * s, Math.PI / 4, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // --- 3. THE DRIVER JUMPER (Sleek high-res shaded graphics) ---
+    // Lower overalls torso seated in the middle (x: -5, y: 1)
+    ctx.fillStyle = char.palette["B"] || "#0A55DC"; // Blue overalls
+    ctx.beginPath();
+    ctx.roundRect(-10 * s, -1 * s, 10 * s, 8 * s, 3 * s);
+    ctx.fill();
+    ctx.stroke();
+
+    // Round golden overall buttons
+    ctx.fillStyle = "#F1C40F";
+    ctx.beginPath();
+    ctx.arc(-4 * s, 2 * s, 1.2 * s, 0, Math.PI * 2);
+    ctx.arc(-8 * s, 2 * s, 1.2 * s, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Red/Green/Purple long sleeves
+    ctx.fillStyle = char.primary;
+    ctx.beginPath();
+    // Left arm holding wheel
+    ctx.ellipse(1 * s, -1 * s, 4 * s, 2 * s, -Math.PI / 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // White glove holding wheel
+    ctx.fillStyle = "#FFFFFF";
+    ctx.beginPath();
+    ctx.arc(3 * s, -2 * s, 2 * s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Plumber head & Face
+    const headX = -5 * s;
+    const headY = -9 * s;
+    const headR = 6.2 * s;
+
+    // Face skin circle
+    ctx.fillStyle = char.palette["S"] || "#FDB883";
+    ctx.beginPath();
+    ctx.arc(headX, headY, headR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Big shiny racing gaze eye
+    ctx.fillStyle = "#FFFFFF";
+    ctx.beginPath();
+    ctx.ellipse(headX + 2.5 * s, headY - 1 * s, 1.5 * s, 2.2 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = char.id === "LUIGI" ? "#2ECC71" : char.id === "WARIO" ? "#8E44AD" : "#3498DB"; // Pupils color!
+    ctx.beginPath();
+    ctx.arc(headX + 3.1 * s, headY - 1 * s, 1 * s, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Cute rounded nose
+    ctx.fillStyle = char.palette["S"] || "#FDB883";
+    ctx.beginPath();
+    ctx.arc(headX + 5.5 * s, headY, 2.5 * s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Signature thick curly mustache
+    ctx.fillStyle = char.palette["K"] || "#211005";
+    ctx.beginPath();
+    ctx.ellipse(headX + 3.5 * s, headY + 2.2 * s, 3.5 * s, 1.5 * s, Math.PI / 12, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Shaded Cap/Helmet
+    const capY = headY - 4 * s;
+    const capGrad = ctx.createLinearGradient(headX - 7 * s, capY - 4 * s, headX + 7 * s, capY + 1 * s);
+    capGrad.addColorStop(0, "#FFFFFF");
+    capGrad.addColorStop(0.3, char.primary);
+    capGrad.addColorStop(1, char.palette["R"] || char.primary);
+
+    ctx.fillStyle = capGrad;
+    ctx.beginPath();
+    // Cap dome
+    ctx.arc(headX, capY - 0.5 * s, 6.4 * s, Math.PI, 0);
+    // Cap visor throwing shade over forehead
+    ctx.quadraticCurveTo(headX + 8 * s, capY - 4 * s, headX + 11 * s, capY - 1 * s);
+    ctx.lineTo(headX + 6 * s, capY + 1.2 * s);
+    ctx.lineTo(headX - 6.4 * s, capY + 1.2 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Cap badge emblem (white circle with character initial)
+    ctx.fillStyle = "#FFFFFF";
+    ctx.beginPath();
+    ctx.arc(headX, capY - 3 * s, 2.2 * s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = char.primary;
+    ctx.font = `bold ${3.5 * s}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(char.id[0], headX, capY - 2.8 * s);
+
+    // --- 4. RACING TUBE SPORT WHEELS ---
+    // We render 2 sports wheels - Front (x: 12, y: 13), Back (x: -12, y: 13)
+    const drawSportWheel = (wx: number, wy: number) => {
+      ctx.save();
+      ctx.translate(wx, wy);
+      // Spin rotation based on horizontal travel frame
+      ctx.rotate(frame * 0.15);
+
+      // Tire body (dark charcoal)
+      const tireGrad = ctx.createRadialGradient(0, 0, 2 * s, 0, 0, 7.5 * s);
+      tireGrad.addColorStop(0, "#2C3E50");
+      tireGrad.addColorStop(0.7, "#111111");
+      tireGrad.addColorStop(1, "#050505");
+
+      ctx.fillStyle = tireGrad;
+      ctx.beginPath();
+      ctx.arc(0, 0, 7.5 * s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Tire tread details (high-res notches)
+      ctx.strokeStyle = "rgba(255,255,255,0.06)";
+      ctx.lineWidth = 1.2 * s;
+      for (let wAngle = 0; wAngle < Math.PI * 2; wAngle += Math.PI / 4) {
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(wAngle) * 5 * s, Math.sin(wAngle) * 5 * s);
+        ctx.lineTo(Math.cos(wAngle) * 7.5 * s, Math.sin(wAngle) * 7.5 * s);
+        ctx.stroke();
+      }
+
+      // Alloy hubcaps (Silver with center rivet)
+      ctx.fillStyle = "#E5E7EB";
+      ctx.strokeStyle = "#374151";
+      ctx.lineWidth = 1 * s;
+      ctx.beginPath();
+      ctx.arc(0, 0, 3.2 * s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Golden center axle nut
+      ctx.fillStyle = "#F59E0B";
+      ctx.beginPath();
+      ctx.arc(0, 0, 1 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    };
+
+    // Draw rear wheel
+    drawSportWheel(-11 * s, 11 * s);
+    // Draw front wheel
+    drawSportWheel(12 * s, 11 * s);
+
+    ctx.restore();
+  };
+
+  // Parallax Green Hills in background (high-res layered karting speedway landscape)
+  const drawHills = (ctx: CanvasRenderingContext2D) => {
+    ctx.save();
+    
+    // --- 1. Depth Layer A (Far Mountains, softer dark green with vertical gradients) ---
+    const farGrad = ctx.createLinearGradient(0, GAME_HEIGHT - 210, 0, GAME_HEIGHT - 58);
+    farGrad.addColorStop(0, "rgba(30, 86, 49, 0.22)");
+    farGrad.addColorStop(1, "rgba(14, 58, 30, 0.35)");
+    ctx.fillStyle = farGrad;
+
+    // Two big far arches spanning the horizon
+    ctx.beginPath();
+    ctx.arc(110, GAME_HEIGHT - 55, 145, Math.PI, 0);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(360, GAME_HEIGHT - 55, 165, Math.PI, 0);
+    ctx.fill();
+
+    // --- 2. Depth Layer B (Nearer Hills, beautiful vibrant green with highlight rims) ---
+    const nearGrad = ctx.createLinearGradient(0, GAME_HEIGHT - 170, 0, GAME_HEIGHT - 55);
+    nearGrad.addColorStop(0, "rgba(46, 204, 113, 0.44)");
+    nearGrad.addColorStop(1, "rgba(22, 115, 62, 0.52)");
+    ctx.fillStyle = nearGrad;
+
+    // Layer of 4 beautiful near overlapping hill arches
+    ctx.beginPath();
+    ctx.arc(50, GAME_HEIGHT - 55, 96, Math.PI, 0);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(195, GAME_HEIGHT - 55, 118, Math.PI, 0);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(340, GAME_HEIGHT - 55, 126, Math.PI, 0);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(460, GAME_HEIGHT - 55, 102, Math.PI, 0);
+    ctx.fill();
+
+    // --- 3. Spectator Speedway elements (Pretty flower bushes on hill tops) ---
+    ctx.fillStyle = "rgba(241, 196, 15, 0.55)"; // Soft golden blossom clusters
+    const flowerSpots = [
+      { x: 50, y: GAME_HEIGHT - 146 },
+      { x: 195, y: GAME_HEIGHT - 170 },
+      { x: 340, y: GAME_HEIGHT - 178 },
+      { x: 460, y: GAME_HEIGHT - 154 }
+    ];
+    flowerSpots.forEach(b => {
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 6, 0, Math.PI * 2);
+      ctx.arc(b.x - 5, b.y + 2.8, 4.8, 0, Math.PI * 2);
+      ctx.arc(b.x + 5, b.y + 2.8, 4.8, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    ctx.restore();
+  };
+
+  // Draw golden spinning coin medallion (gorgeous glossy high-resolution spinning star coin)
+  const drawCoin = (ctx: CanvasRenderingContext2D, cx: number, cy: number, frameTick: number) => {
+    ctx.save();
+    // Use sine rate of elapsed frames for horizontal width rotation scaling
+    const widthScale = Math.abs(Math.sin((frameTick * 0.16) + (cx * 0.04)));
+    
+    // Ambient dark backup shadow
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.beginPath();
+    ctx.ellipse(cx + 1, cy + 1.5, 9.5 * widthScale, 11.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outer golden round metallic rim (Glossy gradient fill)
+    const coinGrad = ctx.createLinearGradient(cx - 9 * widthScale, cy - 11, cx + 9 * widthScale, cy + 11);
+    coinGrad.addColorStop(0, "#F5B041");
+    coinGrad.addColorStop(0.5, "#F1C40F");
+    coinGrad.addColorStop(1, "#D35400");
+    ctx.fillStyle = coinGrad;
+    
+    ctx.strokeStyle = "#9A7D0A"; // Deep luxury gold outline border
+    ctx.lineWidth = 1.6;
+    
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 9.2 * widthScale, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    if (widthScale > 0.3) {
+      // Inner star/groove line stamp detail (classic Mario coin aesthetic)
+      ctx.strokeStyle = "#F39C12";
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, 6 * widthScale, 7.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Gleaming central shine rectangle block
       ctx.fillStyle = "#FFFFFF";
       ctx.beginPath();
-      ctx.ellipse(cx - 2 * widthScale, cy - 2, 1.8 * widthScale, 3.5, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx, cy, 1.8 * widthScale, 5.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Specular bright light glare dot at the top-left edge
+      ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+      ctx.beginPath();
+      ctx.arc(cx - 2.8 * widthScale, cy - 3.8, 1.5 * widthScale, 0, Math.PI * 2);
       ctx.fill();
     }
     
@@ -847,16 +1131,16 @@ export default function GameCanvas() {
           // RENDER BACKGROUND PARALLAX HILLS
           drawHills(ctx);
 
-          // RENDER FLOATING CASTLE TOWER OBSTACLES
+          // RENDER FLOATING CASTLE TOWER OBSTACLES (Vibrant High-Res Green Warp Pipes!)
           engineState.current.obstacles.forEach(obs => {
             // Draw TOP Obstacle (extends from top 0 down to gravity gap boundary)
             const topH = obs.gapY - obs.gapHeight / 2;
-            drawBrickWall(ctx, obs.x, 0, obs.width, topH, true);
+            drawWarpPipe(ctx, obs.x, 0, obs.width, topH, true);
 
             // Draw BOTTOM Obstacle (extends from gap boundary down to grass floor)
             const botY = obs.gapY + obs.gapHeight / 2;
             const botH = (GAME_HEIGHT - 60) - botY;
-            drawBrickWall(ctx, obs.x, botY, obs.width, botH, false);
+            drawWarpPipe(ctx, obs.x, botY, obs.width, botH, false);
           });
 
           // RENDER FLOATING GOLD COINS
@@ -874,9 +1158,25 @@ export default function GameCanvas() {
             drawGrassSegment(ctx, groundX + i * 48, groundY, 48, 60);
           }
 
-          // Top Border of the ground z-40 relative: border-t-8 border-[#4EA33C]
-          ctx.fillStyle = "#4EA33C";
-          ctx.fillRect(0, groundY, GAME_WIDTH, 8);
+          // Top Border: scrolling Red & White checkered racing curb shoulder matching speedway scroll!
+          const curbH = 8;
+          const curbTileW = 16; // width of each checker tile
+          const curbY = groundY;
+          // Calculate proper scrolling start position
+          const curbStartX = groundX % (curbTileW * 2);
+          
+          for (let cx = curbStartX - curbTileW * 2; cx < GAME_WIDTH + curbTileW * 2; cx += curbTileW * 2) {
+            // White checker tile
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fillRect(cx, curbY, curbTileW, curbH);
+            // Red checker tile
+            ctx.fillStyle = "#E74C3C";
+            ctx.fillRect(cx + curbTileW, curbY, curbTileW, curbH);
+          }
+
+          // Sleek dark separation line under racing shoulder
+          ctx.fillStyle = "#113A17";
+          ctx.fillRect(0, groundY + curbH, GAME_WIDTH, 2);
 
           // RENDER ACTIVE PARTICLES / SCORE SPARKS
           engineState.current.particles.forEach(part => {
@@ -886,15 +1186,23 @@ export default function GameCanvas() {
           });
           ctx.globalAlpha = 1.0; // restore normal transparency
 
-          // RENDER THE PLUMBER
+          // RENDER THE PLUMBER (High-Res 3D/Vector Racing Kart!)
           const playerY = engineState.current.playerY;
           const px = GAME_WIDTH / 4 + 20; // stationary screen placement
           const rotation = engineState.current.playerRotation;
           const size = engineState.current.playerWidth;
-          const activeSprite = engineState.current.isFlapping ? SPRITE_JUMP : SPRITE_NORMAL;
 
           const activeChar = CHARACTERS.find(c => c.id === selectedCharacterId) || CHARACTERS[0];
-          drawPixelPlumber(ctx, px, playerY, size, size, rotation, activeSprite, activeChar.palette);
+          drawHighResKartRacer(
+            ctx, 
+            px, 
+            playerY, 
+            size, 
+            rotation, 
+            activeChar, 
+            engineState.current.isFlapping, 
+            engineState.current.currentFrame
+          );
         }
       }
 
