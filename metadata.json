@@ -1,0 +1,6 @@
+{
+  "name": "Pixel Plumber Adventure",
+  "description": "An 8-bit retro arcade game inspired by classic platformer heroes. Control the pixel-art plumber, dodge floating brick towers, listen to retro chiptunes, and capture the high score.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
