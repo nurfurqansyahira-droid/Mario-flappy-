@@ -16,14 +16,5 @@
   <body class="bg-black select-none overflow-x-hidden antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker.register("/service-worker.js")
-            .then((reg) => console.log("Progressive Web App Service Worker linked:", reg.scope))
-            .catch((err) => console.warn("PWA Service Worker registration skipped:", err));
-        });
-      }
-    </script>
   </body>
 </html>

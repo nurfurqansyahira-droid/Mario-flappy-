@@ -90,11 +90,7 @@ class RetroAudioEngine {
         if (!AudioCtxClass || typeof AudioCtxClass !== "function") return;
         
         try {
-          if (AudioCtxClass.prototype) {
-            this.ctx = new AudioCtxClass();
-          } else {
-            this.ctx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
-          }
+          this.ctx = new AudioCtxClass();
         } catch (innerErr) {
           console.warn("Native AudioContext instantiation failed:", innerErr);
           this.ctx = null;
@@ -124,12 +120,12 @@ class RetroAudioEngine {
     }
     
     // Resume context if suspended
-    if (this.ctx && this.ctx.state === 'suspended') {
-      try {
-        this.ctx.resume();
-      } catch (e) {
-        console.warn("Failed to resume audio context:", e);
+    try {
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume().catch((err) => console.warn("AudioContext resume failed:", err));
       }
+    } catch (e) {
+      console.warn("Failed to resume audio context:", e);
     }
   }
 
