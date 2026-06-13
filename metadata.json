@@ -1,6 +1,6 @@
 {
-  "name": "Pixel Plumber Adventure",
-  "description": "A high-fidelity motor girl speedway racing game. Progress through custom levels, dodge obstacles, collect coin bounites, customize premium exhausts and environments in the garage, and access our Google Play publisher blueprint.",
+  "name": "Motorspeedway Pro",
+  "description": "A premium browser-scale motorsport running game. Race through intense obstacle courses, dodge gates, collect coins, and lock in daily reward multipliers or customize bikes in the drift garage.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
