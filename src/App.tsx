@@ -1,233 +1,268 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import GameCanvas from "./components/GameCanvas";
-import { Gamepad2, Info, Moon, Sun, ArrowUp, RefreshCw, Sparkles, Heart } from "lucide-react";
+import SplashView from "./components/SplashView";
+import LoginView from "./components/LoginView";
+import DashboardView from "./components/DashboardView";
+import StoreModal from "./components/StoreModal";
+import ArcadeSettingsPanel from "./components/ArcadeSettingsPanel";
+import { UserProfile } from "./types";
+import { loadUserProfile, saveUserProfile, processXpReward, auditAndUnlockAchievements, updateQuestsOnGameRun } from "./lib/progressDb";
+import { auth, onAuthStateChanged, signOut, isMockFirebase } from "./lib/firebase";
+import { retroAudio } from "./audio";
+import { motion, AnimatePresence } from "motion/react";
+import { Sparkles } from "lucide-react";
+
+type ViewState = "SPLASH" | "AUTH" | "DASHBOARD" | "GAMEPLAY";
 
 export default function App() {
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(true);
+  const [view, setView] = useState<ViewState>("SPLASH");
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  
+  // Dialog Open states
+  const [isStoreOpen, setIsStoreOpen] = useState(false);
+  const [isPublishingOpen, setIsPublishingOpen] = useState(false);
+  const [isAudioMuted, setIsAudioMuted] = useState(false);
 
-  // Simulates pressing an arcade button to trigger gameplay jump
-  const pressArcadeJumpButton = () => {
-    // Generate a global KeyboardEvent to make the plumber jump!
-    const keyEvent = new KeyboardEvent("keydown", {
-      code: "Space",
-      key: " ",
-      bubbles: true,
-      cancelable: true
+  // Level Up Congratulations overlays state
+  const [levelUpMessage, setLevelUpMessage] = useState<string | null>(null);
+
+  // Monitor Auth Changes
+  useEffect(() => {
+    // If we're using offline replication mockup, fetch guest cache
+    if (isMockFirebase) {
+      const activeUserUid = localStorage.getItem("motorgirl_active_uid");
+      if (activeUserUid) {
+        loadUserProfile(activeUserUid).then(p => {
+          setProfile(p);
+        });
+      }
+      return;
+    }
+
+    // Monitor Firebase real Auth state
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        const p = await loadUserProfile(user.uid, user.email || "");
+        setProfile(p);
+      } else {
+        setProfile(null);
+      }
     });
-    window.dispatchEvent(keyEvent);
-    
-    // Quick haptic rumble or effect if supported
-    if (navigator.vibrate) {
-      navigator.vibrate(15);
+
+    return () => unsubscribe();
+  }, []);
+
+  // Update master audio node states when changed
+  useEffect(() => {
+    retroAudio.setMute(isAudioMuted);
+  }, [isAudioMuted]);
+
+  // Handler upon finishing the introductory splash loader animation
+  const handleSplashComplete = () => {
+    // Determine active route based on logged-in record
+    const activeUid = isMockFirebase ? localStorage.getItem("motorgirl_active_uid") : auth.currentUser?.uid;
+    if (profile || activeUid) {
+      setView("DASHBOARD");
+    } else {
+      setView("AUTH");
     }
   };
 
-  const toggleCabinTheme = () => {
-    setIsDarkMode(prev => !prev);
+  // Handler on login or guest creation
+  const handleLoginSuccess = async (email: string, username: string, isAnon: boolean) => {
+    let mockUid = `mock_uid_${Math.floor(1000 + Math.random() * 9000)}`;
+    
+    if (isMockFirebase || isAnon) {
+      localStorage.setItem("motorgirl_active_uid", mockUid);
+      const guestProfile = await loadUserProfile(mockUid, email);
+      guestProfile.username = username;
+      guestProfile.isAnonymous = isAnon;
+      await saveUserProfile(guestProfile);
+      setProfile(guestProfile);
+      setView("DASHBOARD");
+    } else {
+      // In real Firebase, we log in or sign up using standard popup methods
+      // For the high-fidelity applet preview block, we mock sync on login success triggers
+      const verifiedUid = `racer_uid_${email.replace(/[@.]/g, "_")}`;
+      const cloudProfile = await loadUserProfile(verifiedUid, email);
+      cloudProfile.username = username;
+      cloudProfile.isAnonymous = false;
+      await saveUserProfile(cloudProfile);
+      setProfile(cloudProfile);
+      setView("DASHBOARD");
+    }
+  };
+
+  // Sign out user profile state
+  const handleSignOut = async () => {
+    try {
+      if (!isMockFirebase) {
+        await signOut(auth);
+      }
+      localStorage.removeItem("motorgirl_active_uid");
+      setProfile(null);
+      setView("AUTH");
+    } catch (e) {
+      console.warn("Sign out issue:", e);
+    }
+  };
+
+  // Sync profile edits (shop purchases, equipping items, claiming calendars)
+  const handleUpdateProfile = async (updated: UserProfile) => {
+    setProfile(updated);
+    await saveUserProfile(updated);
+  };
+
+  // Handle post-session run results (credited gold balance + level-up check)
+  const handleGameFinished = async (score: number, coinsCollected: number) => {
+    if (!profile) return;
+
+    let updated = { ...profile };
+
+    // 1. Credit stats metrics
+    updated.totalCoins += coinsCollected;
+    updated.coinsCollectedTotal += coinsCollected;
+    updated.obstaclesPassedTotal += score;
+    updated.totalGames += 1;
+    if (score > updated.highScore) {
+      updated.highScore = score;
+    }
+
+    // 2. Award XP points (Gates pass = 8 XP, Gold collected = 5 XP)
+    const xpReward = (score * 8) + (coinsCollected * 5);
+    const { profile: xpProfile, leveledUp, unlockedItems } = processXpReward(updated, xpReward);
+    updated = xpProfile;
+
+    // 3. Evaluate missions progress
+    const { quests } = updateQuestsOnGameRun(score, coinsCollected);
+
+    // 4. Evaluate and audit unlocked achievements
+    const { updatedProfile, newlyUnlocked } = auditAndUnlockAchievements(updated);
+    updated = updatedProfile;
+
+    // Save profile state back to cache/db
+    setProfile(updated);
+    await saveUserProfile(updated);
+
+    // 5. Trigger animations / audio feedback overlays
+    if (leveledUp) {
+      retroAudio.playPoint();
+      setLevelUpMessage(`LEVEL UP! You reached Rank ${updated.level}!`);
+      setTimeout(() => setLevelUpMessage(null), 4000);
+    } else if (newlyUnlocked.length > 0) {
+      retroAudio.playPoint();
+      setLevelUpMessage(`🏆 ACHIEVEMENT: "${newlyUnlocked[0]}" Unlocked!`);
+      setTimeout(() => setLevelUpMessage(null), 4000);
+    }
+
+    // Return to dashboard
+    setView("DASHBOARD");
   };
 
   return (
-    <div className={`min-h-screen transition-colors duration-500 flex flex-col items-center justify-between pb-8 ${isDarkMode ? "bg-radial from-neutral-900 to-black text-white" : "bg-neutral-100 text-neutral-900"}`}>
+    <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-0 md:p-4 font-sans select-none overflow-hidden relative">
       
-      {/* Top Header Navigator */}
-      <header className={`w-full max-w-7xl px-6 py-4 flex justify-between items-center border-b transition-colors ${isDarkMode ? "border-neutral-800/80 bg-neutral-950/40" : "border-neutral-200 bg-white shadow-xs"}`}>
-        <div className="flex items-center gap-3">
-          <div className="bg-red-600 text-white p-2 rounded-xl shadow-lg border-2 border-red-500 animate-pulse">
-            <Gamepad2 size={20} className="stroke-[2.5]" />
-          </div>
-          <div>
-            <h1 className="font-retro text-xs sm:text-sm tracking-widest text-red-500 leading-none">
-              PIXEL PLUMBER
-            </h1>
-            <p className="font-mono text-[9px] text-neutral-500 mt-1 uppercase tracking-wider">
-              8-BIT RETRO CABINET
-            </p>
-          </div>
-        </div>
+      {/* Dynamic altitude atmosphere background based on equipped theme */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(219,39,119,0.15),transparent_60%)] pointer-events-none" />
 
-        {/* Console Controls */}
-        <div className="flex items-center gap-3">
-          <button
-            id="theme-toggler"
-            onClick={toggleCabinTheme}
-            className={`p-2 rounded-xl border transition ${isDarkMode ? "bg-neutral-800 border-neutral-700 text-yellow-400 hover:bg-neutral-700" : "bg-white border-neutral-200 text-neutral-700 hover:bg-neutral-50 shadow-xs"}`}
-            title="Toggle Ambient Light Mode"
+      {/* Primary visual screens rendering */}
+      <AnimatePresence mode="wait">
+        {view === "SPLASH" && (
+          <motion.div key="splash" exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
+            <SplashView onComplete={handleSplashComplete} />
+          </motion.div>
+        )}
+
+        {view === "AUTH" && (
+          <motion.div 
+            key="auth" 
+            initial={{ opacity: 0, y: 15 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.4 }}
           >
-            {isDarkMode ? <Sun size={15} /> : <Moon size={15} />}
-          </button>
-          
-          <div className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-mono border ${isDarkMode ? "bg-green-500/10 border-green-500/30 text-green-400" : "bg-green-50 border-green-200 text-green-700"}`}>
-            <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-ping"></span>
-            60 FPS EMULATOR ACTIVE
-          </div>
-        </div>
-      </header>
+            <LoginView onLoginSuccess={handleLoginSuccess} />
+          </motion.div>
+        )}
 
-      {/* Main Container Layering */}
-      <main className="w-full max-w-6xl px-4 py-6 flex-1 flex flex-col lg:flex-row gap-8 items-center justify-center">
-        
-        {/* Left column: Quick Feature Cards & Instruction Board */}
-        <section className="w-full lg:w-72 flex flex-col gap-4 order-2 lg:order-1 self-stretch justify-center">
-          {/* Theme specifications card */}
-          <div className={`rounded-2xl border p-4 shadow-sm transition-colors ${isDarkMode ? "bg-neutral-900/60 border-neutral-800" : "bg-white border-neutral-200"}`}>
-            <div className="flex items-center gap-2 mb-3">
-              <Sparkles className="text-yellow-400 shrink-0" size={16} />
-              <h2 className="font-retro text-[10px] text-red-500 tracking-wide uppercase">
-                Chiptune Synth
-              </h2>
+        {view === "DASHBOARD" && profile && (
+          <motion.div 
+            key="dashboard"
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            transition={{ duration: 0.3 }}
+          >
+            <DashboardView
+              profile={profile}
+              onUpdateProfile={handleUpdateProfile}
+              onLaunchGame={() => setView("GAMEPLAY")}
+              onOpenStore={() => setIsStoreOpen(true)}
+              onOpenPublishingPanel={() => setIsPublishingOpen(true)}
+              isAudioMuted={isAudioMuted}
+              onMuteToggle={() => setIsAudioMuted(!isAudioMuted)}
+              onSignOut={handleSignOut}
+            />
+          </motion.div>
+        )}
+
+        {view === "GAMEPLAY" && profile && (
+          <motion.div 
+            key="gameplay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.4 }}
+          >
+            <div className="w-full max-w-[500px] h-[640px] bg-black rounded-3xl overflow-hidden border border-neutral-805 relative">
+              <GameCanvas 
+                equippedCharacterId={profile.equippedCharacterId}
+                equippedTrailId={profile.equippedTrailId}
+                equippedThemeId={profile.equippedThemeId}
+                onGameFinished={handleGameFinished}
+                isAudioMuted={isAudioMuted}
+                onMuteToggle={() => setIsAudioMuted(!isAudioMuted)}
+              />
             </div>
-            <p className="font-mono text-[11px] leading-relaxed text-neutral-400">
-              No static mp3 downloads is used here! Soundwaves are procedurally programmed in standard Web Audio chiptunes waveforms. Turn on BGM loop to enjoy nostalgic gaming loops.
-            </p>
-          </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-          {/* Controls Information */}
-          <div className={`rounded-2xl border p-4 shadow-sm transition-colors ${isDarkMode ? "bg-neutral-900/60 border-neutral-800" : "bg-white border-neutral-200"}`}>
-            <div className="flex items-center gap-2 mb-3">
-              <Info className="text-blue-400 shrink-0" size={16} />
-              <h2 className="font-retro text-[10px] text-blue-400 tracking-wide uppercase">
-                Retro Physics
-              </h2>
-            </div>
-            <p className="font-mono text-[11px] leading-relaxed text-neutral-400">
-              Gravity is simulated via progressive down-acceleration. Flapping creates upward state updates. Minimum spacing and gap height scale dynamically based on the scores!
-            </p>
-          </div>
-        </section>
+      {/* Level Up & Achievements popping banners */}
+      <AnimatePresence>
+        {levelUpMessage && (
+          <motion.div
+            initial={{ y: -60, opacity: 0 }}
+            animate={{ y: 20, opacity: 1 }}
+            exit={{ y: -60, opacity: 0 }}
+            className="fixed top-2 z-50 bg-gradient-to-r from-yellow-500 to-amber-600 border border-yellow-300 text-neutral-950 px-5 py-3 rounded-2xl shadow-[0_10px_25px_rgba(245,158,11,0.4)] flex items-center gap-3 font-mono text-[10px] font-extrabold"
+          >
+            <Sparkles className="w-5 h-5 animate-bounce text-neutral-950" />
+            <span>{levelUpMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-        {/* Center column: Beautiful Retro Arcade Cabinet Frame */}
-        <section className="relative flex-1 flex flex-col items-center order-1 lg:order-2">
-          
-          {/* Outer Arcade Cabinet wood / metal container frame simulation */}
-          <div className="relative w-full max-w-[530px] rounded-3xl border-8 border-neutral-800 bg-neutral-950 p-3 sm:p-5 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)]">
-            
-            {/* Retro LED Top Lightbar simulation */}
-            <div className="w-full h-8 bg-neutral-900 rounded-lg flex items-center justify-between px-4 mb-4 border-b-2 border-neutral-800 shadow-inner">
-              <div className="flex gap-1">
-                <div className="w-2.5 h-2.5 bg-red-600 rounded-full shadow-[0_0_8px_#ef4444]"></div>
-                <div className="w-2.5 h-2.5 bg-yellow-500 rounded-full"></div>
-                <div className="w-2.5 h-2.5 bg-green-500 rounded-full"></div>
-              </div>
-              <span className="font-retro text-[9px] text-red-500/80 tracking-widest animate-pulse">
-                ★ COPT-CRT 9000 ★
-              </span>
-              <div className="flex gap-1 font-mono text-[8px] text-neutral-600">
-                <span>INSERT</span>
-                <span className="text-yellow-500 font-semibold animate-blink">$0.25</span>
-              </div>
-            </div>
+      {/* Shop Overlays Modal popup */}
+      <AnimatePresence>
+        {isStoreOpen && profile && (
+          <StoreModal
+            profile={profile}
+            onUpdateProfile={handleUpdateProfile}
+            onClose={() => setIsStoreOpen(false)}
+          />
+        )}
+      </AnimatePresence>
 
-            {/* SCREEN ZONE: Canvas Viewport Component render */}
-            <div className="relative bg-neutral-950 rounded-2xl overflow-hidden shadow-inner">
-              <GameCanvas />
-            </div>
+      {/* Publishing panels popup */}
+      <AnimatePresence>
+        {isPublishingOpen && (
+          <ArcadeSettingsPanel
+            onClose={() => setIsPublishingOpen(false)}
+          />
+        )}
+      </AnimatePresence>
 
-            {/* Interactive Physical Arcade Controls Deck wrapper */}
-            <div className="mt-5 pt-4 border-t-4 border-neutral-800/60 flex flex-col sm:flex-row justify-between items-center gap-4 px-2">
-              
-              {/* JoyStick Simulator graphic */}
-              <div className="flex items-center gap-3">
-                <div className="relative w-16 h-16 bg-neutral-900 rounded-full border-4 border-neutral-800 flex items-center justify-center shadow-lg uppercase font-mono text-[8px] text-neutral-600">
-                  {/* Glowing physical Joystick ball */}
-                  <div className="absolute w-7 h-7 bg-red-600 rounded-full border-2 border-red-400 shadow-[0_0_12px_#ef4444] animate-bounce cursor-pointer flex items-center justify-center hover:bg-red-500">
-                    <div className="w-2 h-2 bg-white/60 rounded-full transform -translate-x-1 -translate-y-1"></div>
-                  </div>
-                  <span className="absolute bottom-1 text-[7px]">JOYSTICK</span>
-                </div>
-                <div className="text-left">
-                  <span className="block font-retro text-[8px] text-neutral-400">DIRECTION</span>
-                  <span className="block font-mono text-[10px] text-neutral-600">AUTOMATIC SPEED</span>
-                </div>
-              </div>
-
-              {/* Physical Red JUMP Button! */}
-              <div className="flex items-center gap-3">
-                <div className="text-right hidden sm:block">
-                  <span className="block font-retro text-[8px] text-neutral-400">ACTION DECK</span>
-                  <span className="block font-mono text-[10px] text-neutral-600 hover:text-white transition">CLICK TO FLAP</span>
-                </div>
-                
-                {/* Outer bezel */}
-                <button
-                  id="arcade-jump-button"
-                  onClick={pressArcadeJumpButton}
-                  className="w-16 h-16 bg-neutral-900 rounded-full border-4 border-neutral-800 shadow-xl flex items-center justify-center transform active:scale-95 transition-transform cursor-pointer relative group"
-                >
-                  {/* Glowing Red Button Cap */}
-                  <div className="absolute w-12 h-12 bg-red-600 group-hover:bg-red-500 rounded-full border border-red-400 shadow-[0_4px_0_#991b1b,0_6px_10px_rgba(0,0,0,0.6)] group-active:translate-y-1 group-active:shadow-none transition-all flex items-center justify-center">
-                    <ArrowUp size={16} className="text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)] stroke-[3]" />
-                  </div>
-                </button>
-              </div>
-
-            </div>
-
-            {/* Physical Cabinet Coin Slot Illustration decoration for fun visual context */}
-            <div className="mt-4 flex justify-center gap-6">
-              <div className="w-12 h-14 bg-neutral-900 rounded-md border-2 border-neutral-800 flex flex-col justify-between items-center p-1.5 shadow-inner">
-                <div className="w-1 h-6 bg-red-500/80 rounded animate-pulse"></div>
-                <span className="font-mono text-[6px] text-neutral-500 leading-none">25¢ COIN</span>
-              </div>
-              <div className="w-12 h-14 bg-neutral-900 rounded-md border-2 border-neutral-800 flex flex-col justify-between items-center p-1.5 shadow-inner">
-                <div className="w-1 h-6 bg-red-500/80 rounded animate-pulse"></div>
-                <span className="font-mono text-[6px] text-neutral-500 leading-none">25¢ COIN</span>
-              </div>
-            </div>
-
-          </div>
-        </section>
-
-        {/* Right column: Retro stats and facts */}
-        <section className="w-full lg:w-72 flex flex-col gap-4 order-3 self-stretch justify-center">
-          
-          {/* Characters and sprites details */}
-          <div className={`rounded-2xl border p-4 shadow-sm transition-colors ${isDarkMode ? "bg-neutral-900/60 border-neutral-800" : "bg-white border-neutral-200"}`}>
-            <h2 className="font-retro text-[10px] text-yellow-500 mb-3 tracking-wide uppercase">
-              PLUMBER SPRITES
-            </h2>
-            
-            {/* Mini matrix details list */}
-            <div className="flex items-center gap-3">
-              {/* Canvas placeholder illustrating the Plumber icon */}
-              <div className="w-12 h-12 bg-neutral-950 rounded-xl flex items-center justify-center overflow-hidden border border-neutral-800">
-                <div className="scale-125 grid grid-cols-16 gap-0 w-8 h-8 select-none pointer-events-none">
-                  <div className="w-1.5 h-1.5 bg-red-600 col-span-16"></div>
-                  {/* Simple illustration block for fun density */}
-                  <span className="font-retro text-[8px] text-yellow-500">8bit</span>
-                </div>
-              </div>
-              <div className="font-mono text-[11px] text-neutral-400 leading-relaxed">
-                Rendered via dynamic scale matrices. Color codes R, B, S, K, W and Y represent Cap/Shirt, Overalls, Skin, Shoes/Mustache, Gloves and Buttons respectively!
-              </div>
-            </div>
-          </div>
-
-          {/* Tips card */}
-          <div className={`rounded-2xl border p-4 shadow-sm transition-colors ${isDarkMode ? "bg-neutral-900/60 border-neutral-800" : "bg-white border-neutral-200"}`}>
-            <h2 className="font-retro text-[10px] text-green-500 mb-2 tracking-wide uppercase">
-              FLIGHT TIPS
-            </h2>
-            <p className="font-mono text-[11px] text-neutral-400 leading-relaxed">
-              Maintain a steady floating cadence! Take short, frequent jumps to navigate narrow gateways rather than big spikes. Clear as many brick towers as you can.
-            </p>
-          </div>
-
-        </section>
-
-      </main>
-
-      {/* Retro developer credit bar */}
-      <footer className="w-full max-w-7xl px-6 pt-4 text-center border-t border-neutral-800/10 dark:border-neutral-850">
-        <p className="font-mono text-[10px] text-neutral-500 flex items-center justify-center gap-1.5 select-none">
-          Made with <Heart size={10} className="text-red-500 fill-red-500 animate-pulse" /> for retro platformer games • © {new Date().getFullYear()} Pixel Arcade
-        </p>
-      </footer>
-      
     </div>
   );
 }
