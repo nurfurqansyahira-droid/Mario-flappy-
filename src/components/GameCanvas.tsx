@@ -194,6 +194,7 @@ export default function GameCanvas() {
     playerHeight: 42,
     isFlapping: false,
     flapTimer: 0,
+    invulnerableFrames: 0, // Crash-protection duration timer in frames
 
     // Obstacle variables
     obstacles: [] as Obstacle[],
@@ -301,6 +302,7 @@ export default function GameCanvas() {
     engineState.current.obstacleSpawnTimer = 0;
     engineState.current.particles = [];
     engineState.current.currentFrame = 0;
+    engineState.current.invulnerableFrames = 120; // 2 seconds safety buffer on starting/restarting
 
     // Adjust parameters by selected difficulty
     if (startDifficulty === "NOVICE") {
@@ -372,6 +374,11 @@ export default function GameCanvas() {
   const updateGame = () => {
     const state = engineState.current;
 
+    // Decrement the crash-protection invulnerability frames if active
+    if (state.invulnerableFrames > 0) {
+      state.invulnerableFrames--;
+    }
+
     // 1. Move clouds
     state.clouds.forEach(cloud => {
       cloud.x -= cloud.speed;
@@ -416,15 +423,22 @@ export default function GameCanvas() {
     state.playerVy += state.playerAccY;
     state.playerY += state.playerVy;
 
-    // Clamp tilt angle rotation based on velocity
+    // Clamp tilt angle rotation based on velocity (more gradual rotation tilt)
     const targetRot = Math.max(-0.4, Math.min(0.8, state.playerVy * 0.07));
     state.playerRotation += (targetRot - state.playerRotation) * 0.18;
 
-    // Ground level collision check
+    // Ground level collision check (only triggers if not invulnerable!)
     const LIMIT_HEIGHT = GAME_HEIGHT - 65; // Soil/Grass starts at GAME_HEIGHT-60
     if (state.playerY + state.playerHeight / 2 >= LIMIT_HEIGHT) {
       state.playerY = LIMIT_HEIGHT - state.playerHeight / 2;
-      handleGameOver();
+      if (state.invulnerableFrames <= 0) {
+        handleGameOver();
+      } else {
+        // Bounce up slightly instead of dying if invulnerable
+        state.playerVy = -3.5;
+        // Spark effect
+        spawnCoinCollectionStars(GAME_WIDTH / 4 + 20, LIMIT_HEIGHT - 10);
+      }
     }
     // Ceiling bounce
     if (state.playerY - state.playerHeight / 2 <= 0) {
@@ -438,17 +452,20 @@ export default function GameCanvas() {
     // 3. Obstacle Generator and updates
     state.obstacleSpawnTimer++;
     // Spawning frequency depends on current difficulty speed
-    const spawnRate = Math.max(80, 140 - Math.min(score * 1.5, 40));
+    const spawnRate = Math.max(85, 140 - Math.min(score * 1.0, 35));
     if (state.obstacleSpawnTimer >= spawnRate) {
       state.obstacleSpawnTimer = 0;
       
       // Select safe gap centered in the screen middle bands
-      const minGapY = 150;
-      const maxGapY = GAME_HEIGHT - 210;
+      const minGapY = 160;
+      const maxGapY = GAME_HEIGHT - 230;
       const gapY = Math.floor(Math.random() * (maxGapY - minGapY)) + minGapY;
       
-      // High score reduces gap size
-      const currentGapHeight = Math.max(state.minGapHeight, state.baseGapHeight - Math.min(score * 1.8, 55));
+      // GRADUAL DIFFICULTY GAP REDUCTION: High score slowly reduces gap size
+      const currentGapHeight = Math.max(
+        state.minGapHeight, 
+        state.baseGapHeight - Math.min(score * 1.0, 45) // Smooth 1.0 per score reduction (reaches limit slower)
+      );
 
       state.obstacles.push({
         x: GAME_WIDTH,
@@ -470,16 +487,16 @@ export default function GameCanvas() {
       if (Math.random() > 0.45) {
         state.coins.push({
           x: GAME_WIDTH + 140, 
-          y: gapY + (Math.random() * 90 - 45), 
+          y: gapY + (Math.random() * 80 - 40), 
           collected: false,
           angleOffset: Math.random() * Math.PI
         });
       }
     }
 
-    // Difficulty speed adjustment escalates as score increases
+    // GRADUAL DIFFICULTY SPEED SCALE: Difficulty speed adjustment escalates very smoothly as score increases
     const startSpeed = startDifficulty === "NOVICE" ? 2.0 : startDifficulty === "CHALLENGING" ? 2.9 : 3.8;
-    const currentSpeed = startSpeed + Math.min(score * 0.08, 3.5);
+    const currentSpeed = startSpeed + Math.min(score * 0.045, 2.2); // Extremely smooth 0.045 gradual speed scale!
     state.obstacleSpeed = currentSpeed;
 
     // Update floating coins and check for player contact
@@ -510,8 +527,10 @@ export default function GameCanvas() {
       // Collision checks with plumber
       const px = GAME_WIDTH / 4 + 20; // fixed player X
       const py = state.playerY;
-      const pw = state.playerWidth - 8; // tighter hitbox bounds
-      const ph = state.playerHeight - 8;
+      
+      // FAIR AND FORGIVING HITBOX: decrease width and height box offsets
+      const pw = state.playerWidth - 12; // tighter width hitbox (forgiving, feels extremely fair!)
+      const ph = state.playerHeight - 12; // tighter height hitbox
 
       const playerLeft = px - pw/2;
       const playerRight = px + pw/2;
@@ -527,7 +546,12 @@ export default function GameCanvas() {
       if (playerRight > obsLeft && playerLeft < obsRight) {
         // Collides with top pipe OR bottom pipe
         if (playerTop < gapTop || playerBottom > gapBottom) {
-          handleGameOver();
+          if (state.invulnerableFrames <= 0) {
+            handleGameOver();
+          } else {
+            // Draw visual warning sparks indicating bounce-off
+            spawnCoinCollectionStars(px, py);
+          }
         }
       }
 
@@ -580,6 +604,16 @@ export default function GameCanvas() {
   const handleGameOver = () => {
     setGameStatus("GAMEOVER");
     retroAudio.playMammaMia();
+    
+    // Trigger vibration feedback on supported Android/mobile devices
+    if (typeof navigator !== "undefined" && navigator.vibrate) {
+      try {
+        navigator.vibrate([150, 100, 150]);
+      } catch (err) {
+        console.warn("Vibration not supported or blockaded by security context:", err);
+      }
+    }
+
     // Delay the classic game over tone slightly to let the high-pitched "Mamma Mia!" cry ring out clearly first
     const timer = setTimeout(() => {
       retroAudio.playGameOver();
@@ -775,7 +809,9 @@ export default function GameCanvas() {
     rotation: number,
     char: typeof CHARACTERS[0],
     isFlapping: boolean,
-    frame: number
+    frame: number,
+    status: GameStatus,
+    invulnerableFrames: number = 0
   ) => {
     ctx.save();
     ctx.translate(px, py);
@@ -797,9 +833,19 @@ export default function GameCanvas() {
     ctx.fill();
     ctx.stroke();
 
-    // Animated thrust flame when flapping or idling
+    // Animated thrust flame when flapping or idling, or grey smoke if crashed
     const flameScale = isFlapping ? (1.25 + Math.sin(frame * 0.45) * 0.3) : (0.75 + Math.sin(frame * 0.2) * 0.15);
-    if (flameScale > 0.1) {
+    if (status === "GAMEOVER") {
+      // Spouting thick grey cartoon smoke waves!
+      ctx.save();
+      ctx.fillStyle = "rgba(127, 140, 141, 0.75)";
+      ctx.beginPath();
+      const smokeR = (3.5 + Math.sin(frame * 0.35) * 1.5) * s;
+      ctx.arc(exhaustX - 8 * s, exhaustY - 4 * s, smokeR, 0, Math.PI * 2);
+      ctx.arc(exhaustX - 18 * s, exhaustY - 8 * s, smokeR * 1.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    } else if (flameScale > 0.1) {
       const grad = ctx.createLinearGradient(exhaustX, exhaustY, exhaustX - 18 * s * flameScale, exhaustY);
       grad.addColorStop(0, "rgba(255, 255, 255, 0.95)");
       grad.addColorStop(0.3, "#F1C40F"); // yellow
@@ -939,17 +985,33 @@ export default function GameCanvas() {
     ctx.fill();
     ctx.stroke();
 
-    // Big shiny racing gaze eye
-    ctx.fillStyle = "#FFFFFF";
-    ctx.beginPath();
-    ctx.ellipse(headX + 2.5 * s, headY - 1 * s, 1.5 * s, 2.2 * s, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
+    if (status === "GAMEOVER") {
+      // High-quality cartoonish "Dizzy" eyes (crossed lines for collision animation)
+      ctx.strokeStyle = "#000000";
+      ctx.lineWidth = 1.8 * s;
+      
+      const cx1 = headX + 2 * s;
+      const cy1 = headY - 1 * s;
+      const sizeOffset = 1.6 * s;
+      ctx.beginPath();
+      ctx.moveTo(cx1 - sizeOffset, cy1 - sizeOffset);
+      ctx.lineTo(cx1 + sizeOffset, cy1 + sizeOffset);
+      ctx.moveTo(cx1 + sizeOffset, cy1 - sizeOffset);
+      ctx.lineTo(cx1 - sizeOffset, cy1 + sizeOffset);
+      ctx.stroke();
+    } else {
+      // Big shiny racing gaze eye
+      ctx.fillStyle = "#FFFFFF";
+      ctx.beginPath();
+      ctx.ellipse(headX + 2.5 * s, headY - 1 * s, 1.5 * s, 2.2 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
 
-    ctx.fillStyle = char.id === "LUIGI" ? "#2ECC71" : char.id === "WARIO" ? "#8E44AD" : "#3498DB"; // Pupils color!
-    ctx.beginPath();
-    ctx.arc(headX + 3.1 * s, headY - 1 * s, 1 * s, 0, Math.PI * 2);
-    ctx.fill();
+      ctx.fillStyle = char.id === "LUIGI" ? "#2ECC71" : char.id === "WARIO" ? "#8E44AD" : "#3498DB"; // Pupils color!
+      ctx.beginPath();
+      ctx.arc(headX + 3.1 * s, headY - 1 * s, 1 * s, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Cute rounded nose
     ctx.fillStyle = char.palette["S"] || "#FDB883";
@@ -1001,8 +1063,12 @@ export default function GameCanvas() {
     const drawSportWheel = (wx: number, wy: number) => {
       ctx.save();
       ctx.translate(wx, wy);
-      // Spin rotation based on horizontal travel frame
-      ctx.rotate(frame * 0.15);
+      // Spin rotation based on game status
+      if (status === "GAMEOVER") {
+        ctx.rotate(frame * 0.45); // Spin super fast when crashed!
+      } else {
+        ctx.rotate(frame * 0.15); // Normal drive spinning
+      }
 
       // Tire body (dark charcoal)
       const tireGrad = ctx.createRadialGradient(0, 0, 2 * s, 0, 0, 7.5 * s);
@@ -1049,7 +1115,48 @@ export default function GameCanvas() {
     // Draw front wheel
     drawSportWheel(12 * s, 11 * s);
 
+    // --- 5. HEAD-OVER SPINNING STARS (Crash Collision Animation) ---
+    if (status === "GAMEOVER") {
+      ctx.save();
+      const starAngle = (frame * 0.08) % (Math.PI * 2);
+      ctx.fillStyle = "#F1C40F";
+      ctx.shadowColor = "#F1C40F";
+      ctx.shadowBlur = 5;
+      for (let i = 0; i < 3; i++) {
+        const offsetAngle = starAngle + (i * Math.PI * 2) / 3;
+        const starX = headX + Math.cos(offsetAngle) * 11 * s;
+        const starY = capY - 9 * s + Math.sin(offsetAngle) * 3.5 * s;
+        
+        ctx.beginPath();
+        // Shiny star indicators
+        ctx.arc(starX, starY, 1.8 * s, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
     ctx.restore();
+
+    // --- 6. NEON GLOWING BUBBLE PROTECTION SHIELD (Invulnerable Start state) ---
+    if (invulnerableFrames > 0) {
+      ctx.save();
+      // Neon cyan-blue energy barrier
+      ctx.strokeStyle = "rgba(52, 152, 219, 0.88)";
+      ctx.lineWidth = 2.4 * s;
+      ctx.shadowColor = "#3498DB";
+      ctx.shadowBlur = 12;
+
+      // Soft transparency fill
+      ctx.fillStyle = "rgba(52, 152, 219, 0.09)";
+
+      // Slightly pulse shield diameter
+      const shieldRadius = (26 + Math.sin(frame * 0.15) * 2.2) * s;
+      ctx.beginPath();
+      ctx.arc(px, py, shieldRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
   };
 
   // Parallax Green Hills in background (high-res layered karting speedway landscape)
@@ -1300,7 +1407,9 @@ export default function GameCanvas() {
             rotation, 
             activeChar, 
             engineState.current.isFlapping, 
-            engineState.current.currentFrame
+            engineState.current.currentFrame,
+            gameStatus,
+            engineState.current.invulnerableFrames
           );
         }
       }
@@ -1330,6 +1439,32 @@ export default function GameCanvas() {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [gameStatus, musicOn, sfxOn]);
+
+  // Prevent default zoom/scrolling behaviors while actively playing on Android / Mobile Chrome
+  useEffect(() => {
+    const preventDefaultTouch = (e: TouchEvent) => {
+      if (gameStatus === "PLAYING") {
+        // Prevent default scrolling and double-tap zoom scales
+        if (e.cancelable) {
+          e.preventDefault();
+        }
+      }
+    };
+
+    const container = containerRef.current;
+    if (container) {
+      // Use passive: false to allow e.preventDefault() to take priority
+      container.addEventListener("touchstart", preventDefaultTouch, { passive: false });
+      container.addEventListener("touchmove", preventDefaultTouch, { passive: false });
+    }
+
+    return () => {
+      if (container) {
+        container.removeEventListener("touchstart", preventDefaultTouch);
+        container.removeEventListener("touchmove", preventDefaultTouch);
+      }
+    };
+  }, [gameStatus]);
 
   return (
     <div 
@@ -1365,7 +1500,14 @@ export default function GameCanvas() {
 
       {/* Main Retro Simulated Monitor Viewport Container */}
       <div 
-        onClick={handleJump}
+        onTouchStart={(e) => {
+          e.preventDefault(); // instantly trigger action with zero delay (no 300ms mobile lag) and prevent pinch zoom
+          handleJump();
+        }}
+        onClick={(e) => {
+          // Fallback click on desktop browser
+          handleJump();
+        }}
         className="relative shadow-2xl overflow-hidden touch-none border-4 border-neutral-900 bg-black cursor-pointer scanlines crt-screen"
         style={{
           width: "100%",
@@ -1529,6 +1671,24 @@ export default function GameCanvas() {
           </div>
         )}
       </div>
+
+      {/* 🎮 PREMIUM ARCADE ONE-HANDED MOBILE JUMP DRIVE */}
+      <button
+        id="btn-arcade-action-trigger"
+        onTouchStart={(e) => {
+          e.preventDefault();
+          handleJump();
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          handleJump();
+        }}
+        style={{ boxShadow: "0 6px 0 #8e1b12" }}
+        className="w-full mt-3 bg-red-600 hover:bg-red-500 text-white font-retro text-[10px] md:text-xs py-4 px-4 rounded-xl border-2 border-red-300 active:translate-y-1 active:shadow-[0_2px_0_#8e1b12] transition-all tracking-widest flex items-center justify-center gap-2.5 shadow-xl select-none"
+      >
+        <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping shrink-0" />
+        TAP TO JUMP / FLAP KART NOW
+      </button>
 
       {/* 🎮 RETRO ARCADE OPTIONS CABINET DASHBOARD */}
       <div 
