@@ -57,6 +57,62 @@ export const MOTOR_GIRLS_RECORDS: MotorGirlSkin[] = [
     helmetColor: "#111111",       // Stealth black helmet
     bikeStyle: "plasma",
     isLocked: true
+  },
+  {
+    id: "GHOST_SHELL",
+    name: "Ghost Shell Nano",
+    tagline: "Phantom Protocol",
+    description: "An elite synthetic hacker racing in absolute stealth mode. Powered by cold teal nanotech plating.",
+    cost: 4000,
+    primaryColor: "#00F2FE",     // Electric Cyan
+    secondaryColor: "#1A002C",   // Night purple
+    sparkColor: "#00F2FE",
+    hairColor: "#8E44AD",        // Purple hair
+    helmetColor: "#000000",       // Black helmet
+    bikeStyle: "hover",
+    isLocked: true
+  },
+  {
+    id: "INFERNO",
+    name: "Inferno Queen",
+    tagline: "Magma Thruster",
+    description: "Forged in sulfurous volcanic wastes. Blazes across roads with direct thermite emissions and golden plating.",
+    cost: 6000,
+    primaryColor: "#FF4500",     // Red-Orange
+    secondaryColor: "#FFD700",   // Gold
+    sparkColor: "#FF4500",
+    hairColor: "#FE5A80",        // Hot pink hair
+    helmetColor: "#1E1E24",       // Charcoal helmet
+    bikeStyle: "plasma",
+    isLocked: true
+  },
+  {
+    id: "NEPTUNE",
+    name: "Ocean Emperor",
+    tagline: "Sub-Aqua Jetter",
+    description: "Submarine-class voyager optimized for hydro-dynamic bypass and deep marine field protection.",
+    cost: 8500,
+    primaryColor: "#0984E3",     // Ocean Blue
+    secondaryColor: "#55EFC4",   // Sea Mint
+    sparkColor: "#55EFC4",
+    hairColor: "#FFFFFF",        // White hair
+    helmetColor: "#2D3436",       // Stone grey helmet
+    bikeStyle: "sports",
+    isLocked: true
+  },
+  {
+    id: "NEBULA_VIXEN",
+    name: "Nebula Vixen",
+    tagline: "Gravitational Outlaw",
+    description: "Mysterious trickster harnessing dark matter anomalies. Swerves with dual cosmic ion-thruster units.",
+    cost: 12000,
+    primaryColor: "#6C5CE7",     // Rich Purple
+    secondaryColor: "#FD79A8",   // Wild Cherry
+    sparkColor: "#6C5CE7",
+    hairColor: "#00CECB",        // Cyan hair
+    helmetColor: "#111111",       // Dark visor
+    bikeStyle: "hover",
+    isLocked: true
   }
 ];
 
@@ -97,6 +153,24 @@ export const ENGINE_TRAILS_RECORDS: EngineTrailStyle[] = [
     type: "neon",
     colors: ["#FF2E93", "#FF7675", "#8E44AD"],
     particleSize: 8
+  },
+  {
+    id: "QUANTUM",
+    name: "Quantum Distortion",
+    description: "Temporal tachyon emissions leaving colorful trails of warped spacetime ripples.",
+    cost: 2000,
+    type: "neon",
+    colors: ["#6C5CE7", "#00F2FE", "#FF007F"],
+    particleSize: 10
+  },
+  {
+    id: "RAINBOW",
+    name: "Rainbow Prism Sparks",
+    description: "Blast multi-color spectrum prism light streaks directly into the atmosphere.",
+    cost: 4000,
+    type: "sparks",
+    colors: ["#FF2E93", "#E67E22", "#F1C40F", "#2ECC71", "#3498DB", "#9B59B6"],
+    particleSize: 9
   }
 ];
 
@@ -137,6 +211,30 @@ export const SPEEDWAY_THEMES_RECORDS: SpeedwayThemeStyle[] = [
     curbWhiteColor: "#9B59B6", // Deep Violet
     curbColor: "#FECA57",      // Star Gold
     groundCurbH: 12
+  },
+  {
+    id: "METROPOLIS",
+    name: "Tokyo Cyber-City",
+    description: "Dusk cyberpunk neon metropolis reflecting gorgeous neon tower spires and high-contrast street elements.",
+    cost: 1800,
+    skyGradColors: ["#020208", "#1E0E32", "#4D1234", "#FF1493"],
+    mountainColor: "#0A0512",
+    speedwayFloorColor: "#0D0E12",
+    curbWhiteColor: "#FF007F", // Neon Pink
+    curbColor: "#FFFF00",      // Buzz Yellow
+    groundCurbH: 14
+  },
+  {
+    id: "WASTELAND",
+    name: "Acid Toxic Badlands",
+    description: "Rumble through radioactive solar-flared deserts with glowing emerald clouds and yellow sandbanks.",
+    cost: 3000,
+    skyGradColors: ["#0A1C14", "#1E3D2F", "#5D9B6E", "#81E979"],
+    mountainColor: "#09120D",
+    speedwayFloorColor: "#141C16",
+    curbWhiteColor: "#00FFCC", // Acid Teal
+    curbColor: "#FFD700",      // Gold Rust
+    groundCurbH: 15
   }
 ];
 

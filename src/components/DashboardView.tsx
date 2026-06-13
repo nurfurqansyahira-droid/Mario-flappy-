@@ -20,6 +20,8 @@ interface DashboardViewProps {
   onSignOut: () => void;
   gamePlayMode: "cabinet" | "fullscreen";
   setGamePlayMode: (mode: "cabinet" | "fullscreen") => void;
+  gameDifficulty: "EASY" | "NORMAL" | "HARD";
+  setGameDifficulty: (diff: "EASY" | "NORMAL" | "HARD") => void;
 }
 
 export default function DashboardView({
@@ -32,7 +34,9 @@ export default function DashboardView({
   onMuteToggle,
   onSignOut,
   gamePlayMode,
-  setGamePlayMode
+  setGamePlayMode,
+  gameDifficulty,
+  setGameDifficulty
 }: DashboardViewProps) {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [dailyQuests, setDailyQuests] = useState<DailyQuestItem[]>([]);
@@ -210,6 +214,50 @@ export default function DashboardView({
               className={`px-3 py-1.5 rounded-xl font-mono text-[8px] uppercase font-black tracking-widest transition cursor-pointer ${gamePlayMode === "fullscreen" ? "bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md shadow-indigo-500/20" : "bg-neutral-950 text-neutral-500 hover:text-white"}`}
             >
               🖥️ Fullscreen
+            </button>
+          </div>
+        </div>
+
+        {/* ⚡ Game Difficulty & Rewards Selector Card */}
+        <div className="bg-neutral-900 border border-neutral-805 p-3 rounded-3xl flex flex-col gap-2.5">
+          <div className="flex justify-between items-center">
+            <span className="font-mono text-[9px] uppercase tracking-wider text-neutral-400 font-bold">
+              ⚡ Select Difficulty (Boost Rewards)
+            </span>
+            <span className="font-mono text-[8.5px] uppercase font-black tracking-normal text-yellow-500 animate-pulse">
+              {gameDifficulty === "EASY" && "🪙 10x Rewards + floaty physics"}
+              {gameDifficulty === "NORMAL" && "🪙 25x Rewards + standard drift"}
+              {gameDifficulty === "HARD" && "🔥 Extreme 60x Rewards + high speed"}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={() => {
+                retroAudio.playPoint();
+                setGameDifficulty("EASY");
+              }}
+              className={`py-2 rounded-xl font-mono text-[9px] uppercase font-black tracking-widest transition cursor-pointer border text-center ${gameDifficulty === "EASY" ? "bg-teal-500/10 border-teal-500 text-teal-400 shadow-md shadow-teal-500/15" : "bg-neutral-950 border-neutral-808 text-neutral-500 hover:text-white"}`}
+            >
+              Easy
+            </button>
+            <button
+              onClick={() => {
+                retroAudio.playPoint();
+                setGameDifficulty("NORMAL");
+              }}
+              className={`py-2 rounded-xl font-mono text-[9px] uppercase font-black tracking-widest transition cursor-pointer border text-center ${gameDifficulty === "NORMAL" ? "bg-pink-500/10 border-pink-500 text-pink-400 shadow-md shadow-pink-500/15" : "bg-neutral-950 border-neutral-808 text-neutral-500 hover:text-white"}`}
+            >
+              Normal
+            </button>
+            <button
+              onClick={() => {
+                retroAudio.playPoint();
+                setGameDifficulty("HARD");
+              }}
+              className={`py-2 rounded-xl font-mono text-[9px] uppercase font-black tracking-widest transition cursor-pointer border text-center ${gameDifficulty === "HARD" ? "bg-red-500/10 border-red-500 text-red-500 shadow-md shadow-red-500/15" : "bg-neutral-950 border-neutral-808 text-neutral-500 hover:text-white"}`}
+            >
+              Hard
             </button>
           </div>
         </div>

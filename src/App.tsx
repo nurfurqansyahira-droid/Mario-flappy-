@@ -25,6 +25,7 @@ export default function App() {
   const [view, setView] = useState<ViewState>("SPLASH");
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [gamePlayMode, setGamePlayMode] = useState<"cabinet" | "fullscreen">("cabinet");
+  const [gameDifficulty, setGameDifficulty] = useState<"EASY" | "NORMAL" | "HARD">("NORMAL");
   
   // Dialog Open states
   const [isStoreOpen, setIsStoreOpen] = useState(false);
@@ -126,7 +127,7 @@ export default function App() {
     await saveUserProfile(updated);
   };
 
-  const handleGameFinished = async (score: number, coinsCollected: number) => {
+  const handleGameFinished = async (score: number, coinsCollected: number, restartInGameplay?: boolean) => {
     if (!profile) return;
 
     let updated = { ...profile };
@@ -161,7 +162,9 @@ export default function App() {
       setTimeout(() => setLevelUpMessage(null), 4000);
     }
 
-    setView("DASHBOARD");
+    if (!restartInGameplay) {
+      setView("DASHBOARD");
+    }
   };
 
   // Helper inside PWA flow for ad crediting
@@ -208,14 +211,13 @@ export default function App() {
         />
         <div className="w-full h-[100dvh] sm:h-[650px] sm:max-w-[490px] sm:max-h-[85vh] aspect-[480/640] relative sm:border-[8px] sm:border-neutral-900 sm:rounded-[2.5rem] overflow-hidden shadow-2xl z-50">
           <GameCanvas 
-            equippedCharacterId={profile.equippedCharacterId}
-            equippedTrailId={profile.equippedTrailId}
-            equippedThemeId={profile.equippedThemeId}
+            profile={profile}
             onGameFinished={handleGameFinished}
             isAudioMuted={isAudioMuted}
             onMuteToggle={() => setIsAudioMuted(!isAudioMuted)}
             isFullscreen={true}
             onToggleFullscreenMode={() => setGamePlayMode("cabinet")}
+            difficulty={gameDifficulty}
           />
         </div>
       </div>
@@ -367,6 +369,8 @@ export default function App() {
                       onSignOut={handleSignOut}
                       gamePlayMode={gamePlayMode}
                       setGamePlayMode={setGamePlayMode}
+                      gameDifficulty={gameDifficulty}
+                      setGameDifficulty={setGameDifficulty}
                     />
                   </motion.div>
                 )}
@@ -381,14 +385,13 @@ export default function App() {
                     className="absolute inset-0 w-full h-full"
                   >
                     <GameCanvas 
-                      equippedCharacterId={profile.equippedCharacterId}
-                      equippedTrailId={profile.equippedTrailId}
-                      equippedThemeId={profile.equippedThemeId}
+                      profile={profile}
                       onGameFinished={handleGameFinished}
                       isAudioMuted={isAudioMuted}
                       onMuteToggle={() => setIsAudioMuted(!isAudioMuted)}
                       isFullscreen={false}
                       onToggleFullscreenMode={() => setGamePlayMode("fullscreen")}
+                      difficulty={gameDifficulty}
                     />
                   </motion.div>
                 )}

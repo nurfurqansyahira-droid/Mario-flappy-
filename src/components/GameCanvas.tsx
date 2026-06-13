@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { retroAudio } from "../audio";
-import { GameStatus } from "../types";
+import { GameStatus, UserProfile } from "../types";
 import { MOTOR_GIRLS_RECORDS, ENGINE_TRAILS_RECORDS, SPEEDWAY_THEMES_RECORDS } from "../data";
 import { Volume2, VolumeX, Pause, Play, RotateCcw, Sparkles, Maximize2, Minimize2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -43,44 +43,50 @@ interface Particle {
 }
 
 interface GameCanvasProps {
-  equippedCharacterId: string;
-  equippedTrailId: string;
-  equippedThemeId: string;
-  onGameFinished: (score: number, coins: number) => void;
+  profile: UserProfile;
+  onGameFinished: (score: number, coins: number, restartInGameplay?: boolean) => void;
   isAudioMuted: boolean;
   onMuteToggle: () => void;
   isFullscreen: boolean;
   onToggleFullscreenMode: () => void;
+  difficulty: "EASY" | "NORMAL" | "HARD";
 }
 
 export default function GameCanvas({
-  equippedCharacterId,
-  equippedTrailId,
-  equippedThemeId,
+  profile,
   onGameFinished,
   isAudioMuted,
   onMuteToggle,
   isFullscreen,
-  onToggleFullscreenMode
+  onToggleFullscreenMode,
+  difficulty
 }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Parse active cosmetics structures
-  const activeSkin = MOTOR_GIRLS_RECORDS.find(m => m.id === equippedCharacterId) || MOTOR_GIRLS_RECORDS[0];
-  const activeTrail = ENGINE_TRAILS_RECORDS.find(t => t.id === equippedTrailId) || ENGINE_TRAILS_RECORDS[0];
-  const activeTheme = SPEEDWAY_THEMES_RECORDS.find(v => v.id === equippedThemeId) || SPEEDWAY_THEMES_RECORDS[0];
+  const activeSkin = MOTOR_GIRLS_RECORDS.find(m => m.id === profile.equippedCharacterId) || MOTOR_GIRLS_RECORDS[0];
+  const activeTrail = ENGINE_TRAILS_RECORDS.find(t => t.id === profile.equippedTrailId) || ENGINE_TRAILS_RECORDS[0];
+  const activeTheme = SPEEDWAY_THEMES_RECORDS.find(v => v.id === profile.equippedThemeId) || SPEEDWAY_THEMES_RECORDS[0];
 
   // Game UI States
   const [gameStatus, setGameStatus] = useState<GameStatus>("START");
   const [score, setScore] = useState<number>(0);
   const [coinsCollectedCount, setCoinsCollectedCount] = useState<number>(0);
 
+  // Revive & Ad Incentive States
+  const [reviveCount, setReviveCount] = useState<number>(0);
+  const [isWatchingAd, setIsWatchingAd] = useState<boolean>(false);
+  const [adCountdown, setAdCountdown] = useState<number>(3);
+
+  // Save gating lock to avoid duplicate reward uploads
+  const hasSavedCurrentRun = useRef<boolean>(false);
+
   // Physics engine reference variables
   const engineState = useRef({
     playerY: 240,
     playerVy: 0,
-    playerAccY: 0.36,         // gravity speed
-    playerFlap: -6.4,          // jump force
+    playerAccY: 0.33,         // gravity speed
+    playerFlap: -5.9,          // jump force
     playerRotation: 0,
     playerWidth: 46,
     playerHeight: 28,
@@ -89,7 +95,7 @@ export default function GameCanvas({
 
     obstacles: [] as Obstacle[],
     coins: [] as Coin[],
-    obstacleSpeed: 2.8,
+    obstacleSpeed: 2.7,
     obstacleSpawnTimer: 0,
 
     clouds: [] as Cloud[],
@@ -150,6 +156,70 @@ export default function GameCanvas({
     };
   }, [gameStatus, isAudioMuted]);
 
+  const handleRestartRun = async () => {
+    retroAudio.playStart();
+    const finalCoinsEarned = getCoinsEarned();
+    
+    if (!hasSavedCurrentRun.current) {
+      console.log(`[Drive Speedway Debug] Executing instant background cashout on restart. Score: ${score}, Coins: ${finalCoinsEarned}`);
+      hasSavedCurrentRun.current = true;
+      await onGameFinished(score, finalCoinsEarned, true); // update profile database, stay in gameplay
+    }
+
+    setReviveCount(0);
+    setScore(0);
+    setCoinsCollectedCount(0);
+    resetGame();
+    setGameStatus("PLAYING");
+  };
+
+  const handleReturnToGarage = async () => {
+    retroAudio.playPoint();
+    const finalCoinsEarned = getCoinsEarned();
+    
+    if (!hasSavedCurrentRun.current) {
+      console.log(`[Drive Speedway Debug] Executing final cashout and exit. Score: ${score}, Coins: ${finalCoinsEarned}`);
+      hasSavedCurrentRun.current = true;
+      await onGameFinished(score, finalCoinsEarned, false); // save and go back to Dashboard
+    } else {
+      onGameFinished(0, 0, false);
+    }
+  };
+
+  const handleContinueWithAd = () => {
+    if (reviveCount > 0) return;
+    
+    retroAudio.playPoint();
+    setIsWatchingAd(true);
+    setAdCountdown(3);
+
+    const interval = setInterval(() => {
+      setAdCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setIsWatchingAd(false);
+          setReviveCount(prevRev => prevRev + 1);
+          revivePlayer();
+          return 3;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const revivePlayer = () => {
+    console.log("[Drive Speedway Debug] Reviving drive line. Clearing pipes and granting shield.");
+    engineState.current.obstacles = [];
+    engineState.current.coins = [];
+    engineState.current.playerY = 240;
+    engineState.current.playerVy = 0;
+    engineState.current.playerRotation = 0;
+    engineState.current.isFlapping = false;
+    engineState.current.invulnerableFrames = 120; // 2 seconds invulnerable shield
+    setGameStatus("PLAYING");
+    retroAudio.playStart();
+  };
+
   const handleJumpAction = () => {
     if (gameStatus === "START") {
       resetGame();
@@ -164,9 +234,7 @@ export default function GameCanvas({
       engineState.current.flapTimer = 8;
       retroAudio.playJump();
     } else if (gameStatus === "GAMEOVER") {
-      resetGame();
-      setGameStatus("PLAYING");
-      retroAudio.playStart();
+      handleRestartRun();
     }
   };
 
@@ -191,7 +259,20 @@ export default function GameCanvas({
     engineState.current.particles = [];
     engineState.current.currentFrame = 0;
     engineState.current.invulnerableFrames = 90;
-    engineState.current.obstacleSpeed = 2.8;
+
+    if (difficulty === "EASY") {
+      engineState.current.playerAccY = 0.25;
+      engineState.current.playerFlap = -5.1;
+      engineState.current.obstacleSpeed = 2.0;
+    } else if (difficulty === "HARD") {
+      engineState.current.playerAccY = 0.39;
+      engineState.current.playerFlap = -6.6;
+      engineState.current.obstacleSpeed = 3.5;
+    } else {
+      engineState.current.playerAccY = 0.33;
+      engineState.current.playerFlap = -5.9;
+      engineState.current.obstacleSpeed = 2.7;
+    }
 
     setScore(0);
     setCoinsCollectedCount(0);
@@ -243,6 +324,8 @@ export default function GameCanvas({
 
   // Physics updating + Collision logic (60fps animation context)
   const updateGamePhy = () => {
+    hasSavedCurrentRun.current = false;
+    setReviveCount(0);
     const state = engineState.current;
 
     if (state.invulnerableFrames > 0) {
@@ -265,8 +348,36 @@ export default function GameCanvas({
       }
     }
 
+    if (gameStatus === "CRASHED" || gameStatus === "GAMEOVER") {
+      // Apply gravity to player to rest on ground
+      state.playerVy += state.playerAccY * 1.5; // falls faster on crash
+      state.playerY += state.playerVy;
+      
+      // Rotate on crash (spin out!)
+      state.playerRotation += 0.12;
+      
+      const groundLimit = GAME_HEIGHT - 65;
+      if (state.playerY + state.playerHeight / 2 >= groundLimit) {
+        state.playerY = groundLimit - state.playerHeight / 2;
+        state.playerVy = 0;
+        state.playerRotation = Math.PI / 2; // Lie flat side-down on Speedway floor
+      }
+      
+      // Update lingering sparks
+      state.particles.forEach((part, index) => {
+        part.x += part.vx;
+        part.y += part.vy;
+        part.vy += part.gravity;
+        part.life -= part.decay;
+        if (part.life <= 0) {
+          state.particles.splice(index, 1);
+        }
+      });
+      return;
+    }
+
     if (gameStatus !== "PLAYING") {
-      // In dashboard menu hover
+      // START context - floating hover animations
       state.playerY = 240 + Math.sin(Date.now() / 240) * 10;
       state.playerRotation = Math.sin(Date.now() / 480) * 0.08;
 
@@ -336,7 +447,15 @@ export default function GameCanvas({
 
     // 3. Spawning freeway obstacles / portals
     state.obstacleSpawnTimer++;
-    const obstacleSpawnRate = Math.max(80, 142 - Math.min(score * 1.2, 40));
+    
+    let obstacleSpawnRate = 120;
+    if (difficulty === "EASY") {
+      obstacleSpawnRate = Math.max(105, 170 - Math.min(score * 1.0, 35));
+    } else if (difficulty === "HARD") {
+      obstacleSpawnRate = Math.max(68, 100 - Math.min(score * 1.5, 30));
+    } else {
+      obstacleSpawnRate = Math.max(82, 142 - Math.min(score * 1.2, 40));
+    }
     
     if (state.obstacleSpawnTimer >= obstacleSpawnRate) {
       state.obstacleSpawnTimer = 0;
@@ -345,11 +464,15 @@ export default function GameCanvas({
       const boundaryBot = GAME_HEIGHT - 210;
       const gapY = Math.floor(Math.random() * (boundaryBot - boundaryTop)) + boundaryTop;
       
-      // Progressive gap tightening
-      const currentGapH = Math.max(
-        96,
-        170 - Math.min(score * 1.2, 45)
-      );
+      // Progressive gap tightening depend on difficulty
+      let currentGapH = 140;
+      if (difficulty === "EASY") {
+        currentGapH = Math.max(120, 175 - Math.min(score * 0.8, 35));
+      } else if (difficulty === "HARD") {
+        currentGapH = Math.max(82, 115 - Math.min(score * 1.5, 25));
+      } else {
+        currentGapH = Math.max(96, 150 - Math.min(score * 1.2, 40));
+      }
 
       state.obstacles.push({
         x: GAME_WIDTH,
@@ -378,8 +501,14 @@ export default function GameCanvas({
       }
     }
 
-    // Accelerate freeway tempo smoothly over time
-    state.obstacleSpeed = 2.8 + Math.min(score * 0.05, 2.5);
+    // Accelerate freeway tempo smoothly over time depend on difficulty
+    if (difficulty === "EASY") {
+      state.obstacleSpeed = 2.0 + Math.min(score * 0.03, 1.2);
+    } else if (difficulty === "HARD") {
+      state.obstacleSpeed = 3.5 + Math.min(score * 0.08, 4.0);
+    } else {
+      state.obstacleSpeed = 2.7 + Math.min(score * 0.05, 2.3);
+    }
 
     // Scroll ground tarmac
     state.groundScrollX = (state.groundScrollX - state.obstacleSpeed) % 48;
@@ -451,8 +580,18 @@ export default function GameCanvas({
     });
   };
 
+  const getCoinsEarned = () => {
+    if (difficulty === "EASY") {
+      return coinsCollectedCount * 10 + score * 5;
+    } else if (difficulty === "HARD") {
+      return coinsCollectedCount * 60 + score * 40;
+    } else {
+      return coinsCollectedCount * 25 + score * 15;
+    }
+  };
+
   const triggerCrash = () => {
-    setGameStatus("GAMEOVER");
+    setGameStatus("CRASHED");
     retroAudio.playMammaMia();
     
     // Play Store / mobile vibration feedback simulation
@@ -464,10 +603,32 @@ export default function GameCanvas({
       }
     }
 
-    // Delay callback back to profile dashboard
+    // Spawn massive fiery crash particle bursts
+    const px = GAME_WIDTH / 4 + 20;
+    const py = engineState.current.playerY;
+    const crashColors = ["#FF5733", "#FF8D1A", "#FFC300", "#FFFFFF", "#8E44AD"];
+    const particlesArr = engineState.current.particles;
+    
+    for (let i = 0; i < 35; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = Math.random() * 5.5 + 2.0;
+      particlesArr.push({
+        x: px,
+        y: py,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 2.0,
+        color: crashColors[Math.floor(Math.random() * crashColors.length)],
+        size: Math.random() * 6 + 3.5,
+        life: 1.0,
+        decay: Math.random() * 0.035 + 0.015,
+        gravity: 0.1
+      });
+    }
+
+    // Freeze brief moment then reveal Game Over controls (Subway Surfers Style!)
     setTimeout(() => {
-      onGameFinished(score, coinsCollectedCount);
-    }, 2500);
+      setGameStatus("GAMEOVER");
+    }, 850);
   };
 
   // Canvas painting loops
@@ -1061,19 +1222,152 @@ export default function GameCanvas({
         )}
 
         {gameStatus === "GAMEOVER" && (
-          <div className="absolute inset-0 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 z-20 select-none">
+          <div className="absolute inset-0 bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-5 z-20 select-none">
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="space-y-4"
+              transition={{ type: "spring", damping: 25 }}
+              className="space-y-4 w-full max-w-xs"
             >
-              <h3 className="text-3xl font-black italic tracking-widest text-red-500 uppercase animate-bounce leading-none">
-                CRASHED!
-              </h3>
-              <div className="font-mono text-[10px] text-neutral-400 space-y-1.5 uppercase leading-normal">
-                <p>Mamma mia! You hit the freeway portal.</p>
-                <p className="text-yellow-400 font-bold">SCORE BOUNTY: 🪙 +{coinsCollectedCount * 2} • XP: +{(score * 8) + (coinsCollectedCount * 5)}</p>
-                <p className="text-neutral-500 pt-3">RETURNING TO THE GARAGE...</p>
+              {/* Header Title Accent */}
+              <div>
+                <span className="font-mono text-[9px] tracking-[0.25em] font-extrabold text-red-500 uppercase">
+                  MATCH CONCLUDED
+                </span>
+                <h3 className="text-3xl font-black italic tracking-widest text-white leading-none mt-1">
+                  CRASHED!
+                </h3>
+              </div>
+
+              {/* Stats Card Overlay */}
+              <div className="bg-neutral-900/90 border border-neutral-800 p-4 rounded-2xl shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-1 bg-red-600/20 text-red-400 border-l border-b border-red-500/10 font-mono text-[7px] uppercase font-bold tracking-widest rounded-bl-xl">
+                  {difficulty}
+                </div>
+
+                <div className="space-y-3 font-mono text-[10px]">
+                  {/* Gate portals passed */}
+                  <div className="flex justify-between items-center border-b border-neutral-800/80 pb-2">
+                    <span className="text-neutral-400">GATES PASSED:</span>
+                    <span className="text-white font-extrabold text-xs">{score}</span>
+                  </div>
+
+                  {/* High Score comparison */}
+                  <div className="flex justify-between items-center text-[9px]">
+                    <span className="text-neutral-400">BEST RUN:</span>
+                    <span className="text-neutral-300 font-bold">
+                      {Math.max(profile.highScore, score)}
+                      {score > profile.highScore && (
+                        <span className="text-yellow-400 font-black ml-1 text-[8.5px]">⭐ NEW RECORD</span>
+                      )}
+                    </span>
+                  </div>
+
+                  {/* Picked coins summary */}
+                  <div className="flex justify-between items-center text-[9px] text-neutral-400">
+                    <span>🪙 GEMS PICKED:</span>
+                    <span className="text-yellow-400 font-bold">+{coinsCollectedCount}</span>
+                  </div>
+
+                  {/* Total run coins payout with bonus */}
+                  <div className="flex justify-between items-center text-[9.5px] border-t border-neutral-800/80 pt-2 text-white">
+                    <span className="font-bold">COINS AWARDED:</span>
+                    <span className="text-yellow-400 font-extrabold text-xs">
+                      🪙 +{getCoinsEarned()}
+                    </span>
+                  </div>
+
+                  {/* Live predicted total wallet */}
+                  <div className="flex justify-between items-center border-t border-neutral-800/80 pt-2 text-[9px] text-neutral-500">
+                    <span>TOTAL PROFILE WALLET:</span>
+                    <span className="text-yellow-300 font-black">
+                      🪙 {profile.totalCoins + getCoinsEarned()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Subway Surfers Quick Layout Touch Buttons */}
+              <div className="flex flex-col gap-2 w-full pt-1">
+                {/* 1. Watch ad container revive option */}
+                {reviveCount === 0 ? (
+                  <button
+                    onClick={handleContinueWithAd}
+                    className="w-full py-2.5 bg-gradient-to-r from-pink-600 to-indigo-600 hover:from-pink-500 hover:to-indigo-500 font-bold font-mono text-[10.5px] text-white tracking-widest rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow-[0_4px_12px_rgba(219,39,119,0.3)] select-none border border-pink-500/20 active:scale-95"
+                  >
+                    <span>📺 CONTINUE RUN (FREE AD)</span>
+                  </button>
+                ) : (
+                  <div className="py-1.5 bg-neutral-900 border border-neutral-800 rounded-xl text-center text-neutral-500 font-mono text-[8px] tracking-wider uppercase">
+                    🔒 Revive option used for this run
+                  </div>
+                )}
+
+                {/* 2. Restart Run immediately in the gameplay view */}
+                <button
+                  onClick={handleRestartRun}
+                  className="w-full py-2.5 bg-teal-600 hover:bg-teal-500 font-bold font-mono text-[10.5px] text-white tracking-widest rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 shadow-[0_4px_12px_rgba(13,148,136,0.2)]"
+                >
+                  <RotateCcw size={11} className="animate-spin" style={{ animationDuration: "6s" }} />
+                  <span>🔄 RESTART RUN (INSTANT)</span>
+                </button>
+
+                {/* 3. Quit back to Main dashboard garage and save */}
+                <button
+                  onClick={handleReturnToGarage}
+                  className="w-full py-2 bg-neutral-950 hover:bg-neutral-900 border border-neutral-800 hover:border-neutral-700 font-bold font-mono text-[9.5px] text-neutral-300 tracking-wider rounded-xl transition cursor-pointer active:scale-95"
+                >
+                  🚪 RETURN TO THE GARAGE
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Immersive ad loading counts */}
+        {isWatchingAd && (
+          <div className="absolute inset-0 bg-black/98 z-30 flex flex-col items-center justify-center text-center p-6 select-none">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="space-y-6 max-w-xs"
+            >
+              <div className="flex justify-center">
+                <div className="w-16 h-16 rounded-full bg-pink-500/10 border-2 border-pink-500 flex items-center justify-center animate-spin text-pink-500">
+                  <Sparkles className="w-8 h-8" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <span className="font-mono text-[9px] tracking-[0.2em] font-extrabold text-pink-500 uppercase animate-pulse">
+                  📺 SPONSOR PROMO ACTIVE
+                </span>
+                <h3 className="text-xl font-black text-white uppercase tracking-wider leading-none">
+                  CHARGING BOOSTERS
+                </h3>
+                <p className="text-[10px] font-mono text-neutral-400">
+                  Reconstructing sportsbike. Prepare to launch!
+                </p>
+              </div>
+
+              {/* Countdown metrics */}
+              <div className="space-y-3">
+                <div className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-indigo-400 font-mono">
+                  0:0{adCountdown}
+                </div>
+                <div className="w-full h-1 bg-neutral-950 rounded-full overflow-hidden border border-neutral-800">
+                  <motion.div
+                    initial={{ width: "100%" }}
+                    animate={{ width: "0%" }}
+                    transition={{ duration: adCountdown, ease: "linear" }}
+                    key={adCountdown}
+                    className="h-full bg-gradient-to-r from-pink-500 to-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="text-[8px] font-mono text-neutral-500 uppercase tracking-widest leading-none pt-2">
+                Simulating rewards incentive
               </div>
             </motion.div>
           </div>
